@@ -66,22 +66,39 @@ def list_services():
         print(f"{name:<15} {status:<10} {s['command']}")
 
 def start_service(name):
+    if name == "all":
+        services = get_services()
+        for s in services:
+            start_service(s['name'])
+        return
+
     plist = get_plist_path(name)
     if not plist.exists():
         print(f"Error: Service {name} not found (no plist at {plist})")
-        sys.exit(1)
+        return # Don't exit on all
     run_command(f"launchctl load {plist}")
     print(f"Started {name}")
 
 def stop_service(name):
+    if name == "all":
+        services = get_services()
+        for s in services:
+            stop_service(s['name'])
+        return
+
     plist = get_plist_path(name)
     if not plist.exists():
         print(f"Error: Service {name} not found")
-        sys.exit(1)
+        return # Don't exit on all
     run_command(f"launchctl unload {plist}")
     print(f"Stopped {name}")
 
 def restart_service(name):
+    if name == "all":
+        services = get_services()
+        for s in services:
+            restart_service(s['name'])
+        return
     stop_service(name)
     start_service(name)
 
