@@ -61,8 +61,9 @@ IMAGE        = "nanoclaw-agent:latest"
 SECRET_KEYS = [
     "CLAUDE_CODE_OAUTH_TOKEN",
     "ANTHROPIC_API_KEY",
-    "ANTHROPIC_BASE_URL",
     "ANTHROPIC_AUTH_TOKEN",
+    "CREDENTIAL_PROXY_HOST",
+    "CREDENTIAL_PROXY_PORT",
     "OLLAMA_HOST",
 ]
 
@@ -156,6 +157,20 @@ def run_container(runtime: str, image: str, payload: dict,
                   folder: str | None = None, is_main: bool = False,
                   timeout: int = 300) -> None:
     cmd = [runtime, "run", "-i", "--rm"]
+    # Drop-privilege support: entrypoint uses setpriv to become this user so
+    # Claude CLI can use --dangerously-skip-permissions (blocked for root)
+    cmd += ["-e", f"RUN_UID={os.getuid()}", "-e", f"RUN_GID={os.getgid()}", "-e", "HOME=/home/node"]
+    # Route API calls through the credential proxy on the host bridge interface.
+    # CREDENTIAL_PROXY_HOST/PORT can override defaults in .env.
+    secrets = payload.get("secrets") or {}
+    proxy_host = secrets.get("CREDENTIAL_PROXY_HOST") or "192.168.64.1"
+    proxy_port = secrets.get("CREDENTIAL_PROXY_PORT") or "3001"
+    cmd += ["-e", f"ANTHROPIC_BASE_URL=http://{proxy_host}:{proxy_port}"]
+    # Forward remaining credential env vars (API key or OAuth token for proxy injection)
+    for key in ("ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN", "OLLAMA_HOST", "OLLAMA_ADMIN_TOOLS"):
+        val = secrets.get(key)
+        if val:
+            cmd += ["-e", f"{key}={val}"]
     if folder:
         for host, container, readonly in build_mounts(folder, is_main):
             if readonly:
