@@ -1,0 +1,140 @@
+#!/usr/bin/env python3
+"""
+services — NanoClaw Local Services Manager
+Manage persistent LLM services and other background tasks.
+
+Usage:
+  services list
+  services start <name>
+  services stop <name>
+  services restart <name>
+  services logs <name>
+  services setup
+"""
+
+import argparse
+import json
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+def _find_nanoclaw_dir() -> Path:
+    if env := os.environ.get("NANOCLAW_DIR"):
+        return Path(env).expanduser()
+    here = Path(__file__).resolve()
+    for parent in [here.parent, here.parent.parent]:
+        if (parent / "package.json").exists():
+            return parent
+    return Path.cwd()
+
+NANOCLAW_DIR = _find_nanoclaw_dir()
+SERVICES_JSON = NANOCLAW_DIR / "local-services.json"
+
+def get_services():
+    if not SERVICES_JSON.exists():
+        return []
+    with open(SERVICES_JSON) as f:
+        return json.load(f)
+
+def run_command(cmd, check=True):
+    try:
+        return subprocess.run(cmd, shell=True, check=check, capture_output=True, text=True)
+    except subprocess.CalledProcessError as e:
+        if check:
+            print(f"Error: {e.stderr}", file=sys.stderr)
+            sys.exit(1)
+        return e
+
+def get_plist_path(name):
+    return Path.home() / "Library" / "LaunchAgents" / f"com.nanoclaw.{name}.plist"
+
+def list_services():
+    services = get_services()
+    if not services:
+        print("No local services defined in local-services.json")
+        return
+
+    print(f"{'NAME':<15} {'STATUS':<10} {'COMMAND'}")
+    print("-" * 50)
+    
+    for s in services:
+        name = s['name']
+        label = f"com.nanoclaw.{name}"
+        result = run_command(f"launchctl list | grep {label}", check=False)
+        status = "Running" if result.returncode == 0 else "Stopped"
+        print(f"{name:<15} {status:<10} {s['command']}")
+
+def start_service(name):
+    plist = get_plist_path(name)
+    if not plist.exists():
+        print(f"Error: Service {name} not found (no plist at {plist})")
+        sys.exit(1)
+    run_command(f"launchctl load {plist}")
+    print(f"Started {name}")
+
+def stop_service(name):
+    plist = get_plist_path(name)
+    if not plist.exists():
+        print(f"Error: Service {name} not found")
+        sys.exit(1)
+    run_command(f"launchctl unload {plist}")
+    print(f"Stopped {name}")
+
+def restart_service(name):
+    stop_service(name)
+    start_service(name)
+
+def show_logs(name):
+    log_file = NANOCLAW_DIR / "logs" / "services" / f"{name}.log"
+    err_file = NANOCLAW_DIR / "logs" / "services" / f"{name}.error.log"
+    if not log_file.exists():
+        print(f"No logs found for {name}")
+        return
+    print(f"--- {name} stdout ---")
+    subprocess.run(f"tail -n 20 {log_file}", shell=True)
+    print(f"\n--- {name} stderr ---")
+    subprocess.run(f"tail -n 20 {err_file}", shell=True)
+
+def setup_services():
+    print("Running setup:local-services...")
+    subprocess.run(["npx", "tsx", "setup/index.ts", "--step", "local-services"], cwd=NANOCLAW_DIR)
+
+def main():
+    parser = argparse.ArgumentParser(description="NanoClaw Local Services Manager")
+    subparsers = parser.add_subparsers(dest="command")
+
+    subparsers.add_parser("list")
+    subparsers.add_parser("setup")
+    
+    start_parser = subparsers.add_parser("start")
+    start_parser.add_argument("name")
+    
+    stop_parser = subparsers.add_parser("stop")
+    stop_parser.add_argument("name")
+    
+    restart_parser = subparsers.add_parser("restart")
+    restart_parser.add_argument("name")
+    
+    logs_parser = subparsers.add_parser("logs")
+    logs_parser.add_argument("name")
+
+    args = parser.parse_args()
+
+    if args.command == "list":
+        list_services()
+    elif args.command == "start":
+        start_service(args.name)
+    elif args.command == "stop":
+        stop_service(args.name)
+    elif args.command == "restart":
+        restart_service(args.name)
+    elif args.command == "logs":
+        show_logs(args.name)
+    elif args.command == "setup":
+        setup_services()
+    else:
+        parser.print_help()
+
+if __name__ == "__main__":
+    main()

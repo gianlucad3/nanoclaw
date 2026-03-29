@@ -1,0 +1,22 @@
+[
+  {
+    "name": "ollama",
+    "command": "/Users/george/homebrew/bin/ollama serve",
+    "keepAlive": true,
+    "runAtLoad": true
+  },
+  {
+    "name": "apple-to-openai",
+    "command": "/Users/george/.local/bin/uv run apple-to-openai",
+    "workingDirectory": "/Users/george/apple-intelligence/apple-to-openai",
+    "keepAlive": true,
+    "runAtLoad": true
+  },
+  {
+    "name": "mlx-lm-server",
+    "command": "/Users/george/.local/bin/uv tool run mlx_lm server --model mlx-community/Nemotron-Cascade-2-30B-A3B-4bit --port 11435 --host 0.0.0.0",
+    "workingDirectory": "/Users/george",
+    "keepAlive": true,
+    "runAtLoad": true
+  }
+]
