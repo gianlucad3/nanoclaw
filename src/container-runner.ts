@@ -244,12 +244,22 @@ async function buildContainerArgs(
     // Colima (macOS) only shares /Users paths into the VM.
     // OneCLI writes CA certs to /var/folders/ (macOS temp) which Colima can't mount.
     // Copy any such cert files to ~/.config/nanoclaw/ so they're accessible in containers.
-    const certCacheDir = path.join(process.env.HOME || '', '.config', 'nanoclaw', 'certs');
+    const certCacheDir = path.join(
+      process.env.HOME || '',
+      '.config',
+      'nanoclaw',
+      'certs',
+    );
     fs.mkdirSync(certCacheDir, { recursive: true });
     for (let i = 0; i < args.length - 1; i++) {
       if (args[i] === '-v') {
         const [src, dest] = args[i + 1].split(':');
-        if (src && src.startsWith('/var/folders/') && fs.existsSync(src) && fs.statSync(src).isFile()) {
+        if (
+          src &&
+          src.startsWith('/var/folders/') &&
+          fs.existsSync(src) &&
+          fs.statSync(src).isFile()
+        ) {
           const cached = path.join(certCacheDir, path.basename(src));
           fs.copyFileSync(src, cached);
           args[i + 1] = `${cached}:${dest}`;

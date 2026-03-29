@@ -214,8 +214,12 @@ export class TelegramChannel implements Channel {
       const emoji = (ctx.message as any)?.sticker?.emoji || '';
       storeNonText(ctx, `[Sticker ${emoji}]`);
     });
-    this.bot.on('message:location', (ctx: Context) => storeNonText(ctx, '[Location]'));
-    this.bot.on('message:contact', (ctx: Context) => storeNonText(ctx, '[Contact]'));
+    this.bot.on('message:location', (ctx: Context) =>
+      storeNonText(ctx, '[Location]'),
+    );
+    this.bot.on('message:contact', (ctx: Context) =>
+      storeNonText(ctx, '[Contact]'),
+    );
 
     // Handle errors gracefully
     this.bot.catch((err: BotError) => {
