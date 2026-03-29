@@ -1,5 +1,6 @@
 import https from 'https';
-import { Api, Bot } from 'grammy';
+import { Api, Bot, type Context, type BotError } from 'grammy';
+import type { UserFromGetMe } from '@grammyjs/types';
 
 import { ASSISTANT_NAME, TRIGGER_PATTERN } from '../config.js';
 import { readEnvFile } from '../env.js';
@@ -209,22 +210,22 @@ export class TelegramChannel implements Channel {
       const name = ctx.message.document?.file_name || 'file';
       storeNonText(ctx, `[Document: ${name}]`);
     });
-    this.bot.on('message:sticker', (ctx) => {
-      const emoji = ctx.message.sticker?.emoji || '';
+    this.bot.on('message:sticker', (ctx: Context) => {
+      const emoji = (ctx.message as any)?.sticker?.emoji || '';
       storeNonText(ctx, `[Sticker ${emoji}]`);
     });
-    this.bot.on('message:location', (ctx) => storeNonText(ctx, '[Location]'));
-    this.bot.on('message:contact', (ctx) => storeNonText(ctx, '[Contact]'));
+    this.bot.on('message:location', (ctx: Context) => storeNonText(ctx, '[Location]'));
+    this.bot.on('message:contact', (ctx: Context) => storeNonText(ctx, '[Contact]'));
 
     // Handle errors gracefully
-    this.bot.catch((err) => {
+    this.bot.catch((err: BotError) => {
       logger.error({ err: err.message }, 'Telegram bot error');
     });
 
     // Start polling — returns a Promise that resolves when started
     return new Promise<void>((resolve) => {
       this.bot!.start({
-        onStart: (botInfo) => {
+        onStart: (botInfo: UserFromGetMe) => {
           logger.info(
             { username: botInfo.username, id: botInfo.id },
             'Telegram bot connected',
