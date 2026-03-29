@@ -84,6 +84,27 @@ bridge100 (192.168.64.1) ← host bridge, created by vmnet when container runs
 en0 (your WiFi/Ethernet) → Internet
 ```
 
+## Ollama
+
+Ollama listens on `localhost` by default, which is unreachable from container VMs. To make it accessible via the bridge:
+
+```bash
+# Start Ollama on all interfaces
+OLLAMA_HOST=0.0.0.0 ollama serve
+```
+
+Then add to `.env`:
+```
+OLLAMA_HOST=http://192.168.64.1:11434
+```
+
+The container's Ollama MCP server reads `OLLAMA_HOST` and connects to the bridge IP. Verify from the host:
+```bash
+curl http://192.168.64.1:11434/api/tags
+```
+
+To make `OLLAMA_HOST=0.0.0.0` permanent, add it to your shell profile (`~/.zshrc` or `~/.bashrc`).
+
 ## References
 
 - [apple/container#469](https://github.com/apple/container/issues/469) — No network from container on macOS 26

@@ -47,9 +47,13 @@ launchctl list | grep nanoclaw
 # Expected: PID  0  com.nanoclaw (PID = running, "-" = not running, non-zero exit = crashed)
 
 # 2. Any running containers?
+container ls --format json 2>/dev/null | python3 -c "import json,sys; [print(c['configuration']['id'],c['status']) for c in json.load(sys.stdin) if 'nanoclaw' in c['configuration']['id']]" 2>/dev/null
+# Docker fallback:
 docker ps --format '{{.Names}} {{.Status}}' 2>/dev/null | grep nanoclaw
 
 # 3. Any stopped/orphaned containers?
+container ls --format json 2>/dev/null | python3 -c "import json,sys; [print(c['configuration']['id'],c['status']) for c in json.load(sys.stdin) if 'nanoclaw' in c['configuration']['id']]" 2>/dev/null
+# Docker fallback:
 docker ps -a --format '{{.Names}} {{.Status}}' 2>/dev/null | grep nanoclaw
 
 # 4. Recent errors in service log?
@@ -135,6 +139,8 @@ sqlite3 store/messages.db "SELECT name, container_config FROM registered_groups;
 
 # Test-run a container to check mounts (dry run)
 # Replace <group-folder> with the group's folder name
+container run -i --rm --entrypoint ls nanoclaw-agent:latest /workspace/extra/
+# Docker fallback:
 docker run -i --rm --entrypoint ls nanoclaw-agent:latest /workspace/extra/
 ```
 

@@ -112,13 +112,29 @@ OLLAMA_ADMIN_TOOLS=true
 
 If they decline (or don't answer), do not add the variable — management tools will be disabled by default.
 
-### Set Ollama host (optional)
+### Set Ollama host
 
-By default, the MCP server connects to `http://host.docker.internal:11434` (Docker Desktop) with a fallback to `localhost`. To use a custom Ollama host, add to `.env`:
+**Docker Desktop (default):** The MCP server connects to `http://host.docker.internal:11434` automatically — no configuration needed.
+
+**Apple Container:** `host.docker.internal` does not exist in Apple Container VMs. You must:
+
+1. Start Ollama bound to all interfaces (not just localhost):
 
 ```bash
-OLLAMA_HOST=http://your-ollama-host:11434
+OLLAMA_HOST=0.0.0.0 ollama serve
 ```
+
+To make this permanent, add `export OLLAMA_HOST=0.0.0.0` to your shell profile.
+
+2. Add the bridge IP to `.env` so containers know where to find Ollama:
+
+```bash
+OLLAMA_HOST=http://192.168.64.1:11434
+```
+
+The bridge IP (`192.168.64.1`) is Apple Container's default host gateway — the same address the credential proxy uses. Containers reach Ollama directly via this bridge without needing internet routing.
+
+**Custom host:** To use any other Ollama instance, set `OLLAMA_HOST` to its URL in `.env`.
 
 ### Restart the service
 
@@ -177,8 +193,9 @@ The agent is trying to run `ollama` CLI inside the container instead of using th
 ### "Failed to connect to Ollama"
 
 1. Verify Ollama is running: `ollama list`
-2. Check Docker can reach the host: `docker run --rm curlimages/curl curl -s http://host.docker.internal:11434/api/tags`
-3. If using a custom host, check `OLLAMA_HOST` in `.env`
+2. **Docker Desktop:** check the host is reachable: `docker run --rm curlimages/curl curl -s http://host.docker.internal:11434/api/tags`
+3. **Apple Container:** Ollama must listen on all interfaces (`OLLAMA_HOST=0.0.0.0 ollama serve`) and `OLLAMA_HOST=http://192.168.64.1:11434` must be set in `.env`. Verify: `curl http://192.168.64.1:11434/api/tags`
+4. If using a custom host, check `OLLAMA_HOST` in `.env`
 
 ### Agent doesn't use Ollama tools
 
