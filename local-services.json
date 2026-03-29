@@ -2,6 +2,9 @@
   {
     "name": "ollama",
     "command": "/Users/george/homebrew/bin/ollama serve",
+    "env": {
+      "OLLAMA_HOST": "0.0.0.0"
+    },
     "keepAlive": true,
     "runAtLoad": true
   },
