@@ -5,18 +5,26 @@
  * instance (e.g. `phoenix serve` on the host, reachable from the container
  * at http://host.containers.internal:6006).
  *
- * This file must be the first import in index.ts so the SDK is patched
- * before @anthropic-ai/claude-agent-sdk is imported.
+ * ESM module namespace objects are sealed — manuallyInstrument() cannot
+ * patch them directly. Instead we pass a plain mutable wrapper object for
+ * the instrumentation to patch, then re-export the (possibly wrapped) query
+ * function so index.ts always calls the instrumented version.
  */
 
-import * as ClaudeAgentSDK from '@anthropic-ai/claude-agent-sdk';
+import { query as _query, HookCallback, PreCompactHookInput } from '@anthropic-ai/claude-agent-sdk';
 import { ClaudeAgentSDKInstrumentation } from '@arizeai/openinference-instrumentation-claude-agent-sdk';
 import { register } from '@arizeai/phoenix-otel';
 import type { TracerProvider } from '@opentelemetry/api';
 
+// Re-export SDK types that index.ts needs
+export type { HookCallback, PreCompactHookInput };
+
 const endpoint = process.env.PHOENIX_COLLECTOR_ENDPOINT;
 
 export let tracerProvider: TracerProvider | null = null;
+
+// Mutable wrapper that the instrumentation can patch freely
+const sdkWrapper = { query: _query };
 
 if (endpoint) {
   tracerProvider = register({
@@ -26,11 +34,14 @@ if (endpoint) {
   });
 
   const instrumentation = new ClaudeAgentSDKInstrumentation();
-  instrumentation.manuallyInstrument(ClaudeAgentSDK);
+  instrumentation.manuallyInstrument(sdkWrapper);
 
   // eslint-disable-next-line no-console
   console.error(`[instrumentation] Phoenix tracing enabled → ${endpoint}`);
 }
+
+// Export the (possibly patched) query for index.ts to use
+export const query = sdkWrapper.query;
 
 export async function shutdownTracing(): Promise<void> {
   if (tracerProvider && 'shutdown' in tracerProvider) {

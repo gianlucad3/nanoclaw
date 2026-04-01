@@ -14,14 +14,11 @@
  *   Final marker after loop ends signals completion.
  */
 
-import './instrumentation.js';
-
 import fs from 'fs';
 import path from 'path';
 import { execFile } from 'child_process';
-import { query, HookCallback, PreCompactHookInput } from '@anthropic-ai/claude-agent-sdk';
 import { fileURLToPath } from 'url';
-import { shutdownTracing } from './instrumentation.js';
+import { query, shutdownTracing, HookCallback, PreCompactHookInput } from './instrumentation.js';
 
 interface ContainerInput {
   prompt: string;
