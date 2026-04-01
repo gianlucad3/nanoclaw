@@ -129,9 +129,8 @@ Run `npm test` before submitting any code change. If your change touches config,
 1. Add the server's env vars to `readEnvFile` in `src/config.ts` and export them.
 2. Forward them via `-e` flags in `buildContainerArgs` in `src/container-runner.ts`.
 3. Add an `env` field in the `mcpServers` config in `container/agent-runner/src/index.ts`.
-4. Add them to `SECRET_KEYS` and the forwarding loop in `scripts/claw`.
-5. Document them in `.env.example`.
-6. Run `npm test` — `mcp-consistency.test.ts` will tell you exactly what's missing.
+4. Document them in `.env.example` — `scripts/claw` forwards all `.env` keys automatically.
+5. Run `npm test` — `mcp-consistency.test.ts` will tell you exactly what's missing.
 
 For skills, run the skill end-to-end and verify it works.
 

@@ -82,9 +82,7 @@ for (const { file, serverName, prefix } of mcpServers) {
 
     it('is registered in mcpServers in index.ts', () => {
       // Match "serverName:" or "serverName :" in mcpServers block
-      expect(indexSource).toMatch(
-        new RegExp(`${serverName}\\s*:\\s*\\{`),
-      );
+      expect(indexSource).toMatch(new RegExp(`${serverName}\\s*:\\s*\\{`));
     });
 
     it(`references ${file.replace('.ts', '.js')} in index.ts`, () => {
@@ -164,15 +162,15 @@ for (const { file, serverName, prefix } of mcpServers) {
 describe('container-runner.ts env imports', () => {
   // Every env var forwarded in buildContainerArgs must be imported from config
   const forwardedVars = [
-    ...containerRunnerSource.matchAll(
-      /if\s*\(([A-Z_]+)\)\s*args\.push\('-e'/g,
-    ),
+    ...containerRunnerSource.matchAll(/if\s*\(([A-Z_]+)\)\s*args\.push\('-e'/g),
   ].map((m) => m[1]);
 
   for (const envVar of forwardedVars) {
     it(`imports ${envVar} from config.ts`, () => {
       expect(containerRunnerSource).toMatch(
-        new RegExp(`import\\s*\\{[^}]*${envVar}[^}]*\\}\\s*from\\s*'\\./config`),
+        new RegExp(
+          `import\\s*\\{[^}]*${envVar}[^}]*\\}\\s*from\\s*'\\./config`,
+        ),
       );
     });
   }
@@ -191,22 +189,21 @@ describe('claw script env forwarding', () => {
 
   if (!clawSource) return;
 
-  // Extract env vars forwarded by container-runner.ts buildContainerArgs
-  const containerRunnerVars = [
-    ...containerRunnerSource.matchAll(
-      /if\s*\(([A-Z_]+)\)\s*args\.push\('-e'/g,
-    ),
-  ].map((m) => m[1]);
+  // claw forwards all keys from .env generically — verify the pattern is present
+  // rather than checking for each individual var name.
+  it('uses generic forwarding loop (no hardcoded key list)', () => {
+    expect(
+      clawSource,
+      'scripts/claw should forward all .env keys generically via ' +
+        '`for key, val in secrets.items()` rather than a hardcoded list. ' +
+        'Remove any explicit SECRET_KEYS list and use the generic loop.',
+    ).toContain('for key, val in secrets.items()');
+  });
 
-  for (const envVar of containerRunnerVars) {
-    it(`forwards ${envVar} (matches container-runner.ts)`, () => {
-      // claw reads vars from .env via SECRET_KEYS, then forwards them
-      // in the for-loop. Check both places.
-      expect(
-        clawSource,
-        `container-runner.ts forwards ${envVar} but scripts/claw does not. ` +
-          `Add "${envVar}" to SECRET_KEYS and the forwarding loop in claw.`,
-      ).toContain(envVar);
-    });
-  }
+  it('reads all .env keys without a SECRET_KEYS allowlist', () => {
+    expect(
+      clawSource,
+      'scripts/claw should not filter secrets by a hardcoded SECRET_KEYS list.',
+    ).not.toContain('SECRET_KEYS');
+  });
 });

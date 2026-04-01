@@ -58,18 +58,6 @@ DB_PATH      = NANOCLAW_DIR / "store" / "messages.db"
 ENV_FILE     = NANOCLAW_DIR / ".env"
 IMAGE        = "nanoclaw-agent:latest"
 
-SECRET_KEYS = [
-    "CLAUDE_CODE_OAUTH_TOKEN",
-    "ANTHROPIC_API_KEY",
-    "ANTHROPIC_AUTH_TOKEN",
-    "CREDENTIAL_PROXY_HOST",
-    "CREDENTIAL_PROXY_PORT",
-    "OLLAMA_HOST",
-    "OLLAMA_ADMIN_TOOLS",
-    "MLX_HOST",
-    "MLX_MODEL",
-]
-
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
 def detect_runtime(preference: str | None) -> str:
@@ -94,9 +82,7 @@ def read_secrets(env_file: Path) -> dict:
             continue
         if "=" in line:
             key, _, val = line.partition("=")
-            key = key.strip()
-            if key in SECRET_KEYS:
-                secrets[key] = val.strip()
+            secrets[key.strip()] = val.strip()
     return secrets
 
 
@@ -169,10 +155,9 @@ def run_container(runtime: str, image: str, payload: dict,
     proxy_host = secrets.get("CREDENTIAL_PROXY_HOST") or "192.168.64.1"
     proxy_port = secrets.get("CREDENTIAL_PROXY_PORT") or "3001"
     cmd += ["-e", f"ANTHROPIC_BASE_URL=http://{proxy_host}:{proxy_port}"]
-    # Forward remaining credential env vars (API key or OAuth token for proxy injection)
-    for key in ("ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN", "OLLAMA_HOST", "OLLAMA_ADMIN_TOOLS", "MLX_HOST", "MLX_MODEL"):
-        val = secrets.get(key)
-        if val:
+    # Forward all secrets from .env (except proxy vars consumed above to build ANTHROPIC_BASE_URL)
+    for key, val in secrets.items():
+        if key not in ("CREDENTIAL_PROXY_HOST", "CREDENTIAL_PROXY_PORT") and val:
             cmd += ["-e", f"{key}={val}"]
     if folder:
         for host, container, readonly in build_mounts(folder, is_main):
