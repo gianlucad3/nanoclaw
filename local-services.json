@@ -21,5 +21,11 @@
     "workingDirectory": "/Users/george",
     "keepAlive": true,
     "runAtLoad": true
+  },
+  {
+    "name": "phoenix",
+    "command": "/Users/george/.local/bin/phoenix serve",
+    "keepAlive": true,
+    "runAtLoad": true
   }
 ]

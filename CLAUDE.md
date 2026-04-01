@@ -75,6 +75,16 @@ systemctl --user stop nanoclaw
 systemctl --user restart nanoclaw
 ```
 
+Local services (Ollama, etc. defined in `local-services.json`):
+```bash
+scripts/services list
+scripts/services start <name>   # or 'all'
+scripts/services stop <name>    # or 'all'
+scripts/services restart <name> # or 'all'
+scripts/services logs <name>
+scripts/services setup          # re-run setup for local services
+```
+
 ## Troubleshooting
 
 **WhatsApp not connecting after upgrade:** WhatsApp is now a separate skill, not bundled in core. Run `/add-whatsapp` (or `npx tsx scripts/apply-skill.ts .claude/skills/add-whatsapp && npm run build`) to install it. Existing auth credentials and groups are preserved.

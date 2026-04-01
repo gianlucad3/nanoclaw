@@ -54,6 +54,9 @@ function makeConfigMock(overrides: Record<string, unknown> = {}) {
     OLLAMA_ADMIN_TOOLS: false,
     MLX_HOST: '',
     MLX_MODEL: '',
+    PHOENIX_COLLECTOR_ENDPOINT: '',
+    PHOENIX_API_KEY: '',
+    PHOENIX_PROJECT_NAME: '',
     ...overrides,
   };
 }
@@ -143,5 +146,39 @@ describe('buildContainerArgs env forwarding', () => {
     expect(argsStr).toContain('-e MLX_HOST=http://192.168.64.1:11435');
     expect(argsStr).toContain('-e MLX_MODEL=test-model');
     expect(argsStr).toContain('-e OLLAMA_ADMIN_TOOLS=true');
+  });
+
+  it('forwards PHOENIX_COLLECTOR_ENDPOINT when set', async () => {
+    const buildContainerArgs = await importBuildContainerArgs({
+      PHOENIX_COLLECTOR_ENDPOINT: 'http://host.containers.internal:6006',
+    });
+    const args = buildContainerArgs([], 'test-container', true);
+    expect(args.join(' ')).toContain(
+      '-e PHOENIX_COLLECTOR_ENDPOINT=http://host.containers.internal:6006',
+    );
+  });
+
+  it('does NOT forward PHOENIX_COLLECTOR_ENDPOINT when empty', async () => {
+    const buildContainerArgs = await importBuildContainerArgs({
+      PHOENIX_COLLECTOR_ENDPOINT: '',
+    });
+    const args = buildContainerArgs([], 'test-container', true);
+    expect(args.join(' ')).not.toContain('PHOENIX_COLLECTOR_ENDPOINT');
+  });
+
+  it('forwards PHOENIX_API_KEY when set', async () => {
+    const buildContainerArgs = await importBuildContainerArgs({
+      PHOENIX_API_KEY: 'test-api-key',
+    });
+    const args = buildContainerArgs([], 'test-container', true);
+    expect(args.join(' ')).toContain('-e PHOENIX_API_KEY=test-api-key');
+  });
+
+  it('forwards PHOENIX_PROJECT_NAME when set', async () => {
+    const buildContainerArgs = await importBuildContainerArgs({
+      PHOENIX_PROJECT_NAME: 'my-project',
+    });
+    const args = buildContainerArgs([], 'test-container', true);
+    expect(args.join(' ')).toContain('-e PHOENIX_PROJECT_NAME=my-project');
   });
 });

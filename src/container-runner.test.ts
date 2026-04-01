@@ -20,6 +20,9 @@ vi.mock('./config.js', () => ({
   OLLAMA_ADMIN_TOOLS: false,
   MLX_HOST: '',
   MLX_MODEL: '',
+  PHOENIX_COLLECTOR_ENDPOINT: '',
+  PHOENIX_API_KEY: '',
+  PHOENIX_PROJECT_NAME: '',
 }));
 
 // Mock logger
