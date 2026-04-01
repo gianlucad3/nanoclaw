@@ -191,15 +191,18 @@ function buildVolumeMounts(
     'agent-runner-src',
   );
   if (fs.existsSync(agentRunnerSrc)) {
-    const srcIndex = path.join(agentRunnerSrc, 'index.ts');
-    const cachedIndex = path.join(groupAgentRunnerDir, 'index.ts');
-    const needsCopy =
-      !fs.existsSync(groupAgentRunnerDir) ||
-      !fs.existsSync(cachedIndex) ||
-      (fs.existsSync(srcIndex) &&
-        fs.statSync(srcIndex).mtimeMs > fs.statSync(cachedIndex).mtimeMs);
-    if (needsCopy) {
-      fs.cpSync(agentRunnerSrc, groupAgentRunnerDir, { recursive: true });
+    fs.mkdirSync(groupAgentRunnerDir, { recursive: true });
+    // Sync each source file individually: copy if missing or source is newer.
+    // This picks up new files and updates without wiping group-level customizations.
+    for (const file of fs.readdirSync(agentRunnerSrc)) {
+      const src = path.join(agentRunnerSrc, file);
+      const dst = path.join(groupAgentRunnerDir, file);
+      if (
+        !fs.existsSync(dst) ||
+        fs.statSync(src).mtimeMs > fs.statSync(dst).mtimeMs
+      ) {
+        fs.copyFileSync(src, dst);
+      }
     }
   }
   mounts.push({

@@ -127,9 +127,13 @@ def build_mounts(folder: str, is_main: bool) -> list[tuple[str, str, bool]]:
 
     agent_runner_src = sessions_dir / "agent-runner-src"
     project_agent_runner = NANOCLAW_DIR / "container" / "agent-runner" / "src"
-    if not agent_runner_src.exists() and project_agent_runner.exists():
-        import shutil
-        shutil.copytree(project_agent_runner, agent_runner_src)
+    if project_agent_runner.exists():
+        agent_runner_src.mkdir(parents=True, exist_ok=True)
+        for src_file in project_agent_runner.iterdir():
+            dst_file = agent_runner_src / src_file.name
+            if not dst_file.exists() or src_file.stat().st_mtime > dst_file.stat().st_mtime:
+                import shutil
+                shutil.copy2(src_file, dst_file)
 
     mounts: list[tuple[str, str, bool]] = []
     if is_main:
