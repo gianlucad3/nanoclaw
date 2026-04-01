@@ -3,7 +3,7 @@
  *
  * When PHOENIX_COLLECTOR_ENDPOINT is set, traces are sent to a Phoenix
  * instance (e.g. `phoenix serve` on the host, reachable from the container
- * at http://host.containers.internal:6006).
+ * at http://192.168.64.1:6006 — Apple Container bridge gateway IP).
  *
  * ESM module namespace objects are sealed — manuallyInstrument() cannot
  * patch them directly. Instead we pass a plain mutable wrapper object for

@@ -8,7 +8,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
 
-const MLX_HOST = process.env.MLX_HOST || 'http://host.docker.internal:11435';
+const MLX_HOST = process.env.MLX_HOST;
 const MLX_MODEL = process.env.MLX_MODEL || 'mlx-community/Nemotron-Cascade-2-30B-A3B-4bit';
 
 function log(msg: string): void {
@@ -16,17 +16,10 @@ function log(msg: string): void {
 }
 
 async function mlxFetch(path: string, options?: RequestInit): Promise<Response> {
-  const url = `${MLX_HOST}${path}`;
-  try {
-    return await fetch(url, options);
-  } catch (err) {
-    // Fallback to localhost if host.docker.internal fails
-    if (MLX_HOST.includes('host.docker.internal')) {
-      const fallbackUrl = url.replace('host.docker.internal', 'localhost');
-      return await fetch(fallbackUrl, options);
-    }
-    throw err;
+  if (!MLX_HOST) {
+    throw new Error('MLX_HOST is not set. Add MLX_HOST=http://192.168.64.1:11435 to .env');
   }
+  return await fetch(`${MLX_HOST}${path}`, options);
 }
 
 const server = new McpServer({

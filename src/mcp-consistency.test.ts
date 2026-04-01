@@ -207,3 +207,46 @@ describe('claw script env forwarding', () => {
     ).not.toContain('SECRET_KEYS');
   });
 });
+
+// --- Apple Container networking anti-patterns ---
+// host.containers.internal and host.docker.internal do not resolve inside
+// Apple Container VMs. Any container-facing URL must use CONTAINER_HOST_GATEWAY
+// (the bridge gateway IP, typically 192.168.64.1).
+// These tests catch cases where a non-resolving hostname is used as a default
+// value or documented as a suggested setting.
+
+const AGENT_RUNNER_DIR = path.join(ROOT, 'container/agent-runner/src');
+const BAD_HOSTNAMES = ['host.containers.internal', 'host.docker.internal'];
+
+describe('Apple Container networking — no unresolvable hostnames', () => {
+  it('.env.example does not suggest host.containers.internal or host.docker.internal', () => {
+    if (!fs.existsSync(ENV_EXAMPLE)) return;
+    const envExample = fs.readFileSync(ENV_EXAMPLE, 'utf-8');
+    for (const hostname of BAD_HOSTNAMES) {
+      expect(
+        envExample,
+        `.env.example references "${hostname}" which does not resolve inside ` +
+          `Apple Container VMs. Use CONTAINER_HOST_GATEWAY (192.168.64.1) instead.`,
+      ).not.toContain(hostname);
+    }
+  });
+
+  it('MCP server files do not use host.docker.internal as a default URL value', () => {
+    const mcpFiles = fs
+      .readdirSync(AGENT_RUNNER_DIR)
+      .filter((f) => f.endsWith('-mcp-stdio.ts'));
+
+    for (const file of mcpFiles) {
+      const source = fs.readFileSync(path.join(AGENT_RUNNER_DIR, file), 'utf-8');
+      // Allow references in comments; catch uses in string literals (quotes)
+      const stringLiterals = [...source.matchAll(/['"`][^'"`]*host\.docker\.internal[^'"`]*['"`]/g)];
+      expect(
+        stringLiterals.length,
+        `${file} contains "host.docker.internal" in a string literal. ` +
+          `This hostname does not resolve in Apple Container VMs. ` +
+          `Use process.env.SOME_HOST with no fallback, or document that ` +
+          `the env var must be set.`,
+      ).toBe(0);
+    }
+  });
+});

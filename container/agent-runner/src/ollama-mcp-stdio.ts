@@ -1,7 +1,7 @@
 /**
  * Ollama MCP Server for NanoClaw
  * Exposes local Ollama models as tools for the container agent.
- * Uses host.docker.internal to reach the host's Ollama instance from Docker.
+ * Set OLLAMA_HOST=http://192.168.64.1:11434 to reach the host from Apple Container.
  */
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -11,7 +11,7 @@ import { z } from 'zod';
 import fs from 'fs';
 import path from 'path';
 
-const OLLAMA_HOST = process.env.OLLAMA_HOST || 'http://host.docker.internal:11434';
+const OLLAMA_HOST = process.env.OLLAMA_HOST;
 const OLLAMA_ADMIN_TOOLS = process.env.OLLAMA_ADMIN_TOOLS === 'true';
 const OLLAMA_STATUS_FILE = '/workspace/ipc/ollama_status.json';
 
@@ -30,17 +30,10 @@ function writeStatus(status: string, detail?: string): void {
 }
 
 async function ollamaFetch(path: string, options?: RequestInit): Promise<Response> {
-  const url = `${OLLAMA_HOST}${path}`;
-  try {
-    return await fetch(url, options);
-  } catch (err) {
-    // Fallback to localhost if host.docker.internal fails
-    if (OLLAMA_HOST.includes('host.docker.internal')) {
-      const fallbackUrl = url.replace('host.docker.internal', 'localhost');
-      return await fetch(fallbackUrl, options);
-    }
-    throw err;
+  if (!OLLAMA_HOST) {
+    throw new Error('OLLAMA_HOST is not set. Add OLLAMA_HOST=http://192.168.64.1:11434 to .env');
   }
+  return await fetch(`${OLLAMA_HOST}${path}`, options);
 }
 
 const server = new McpServer({
@@ -79,7 +72,7 @@ server.tool(
       return { content: [{ type: 'text' as const, text: `Installed models:\n${list}` }] };
     } catch (err) {
       return {
-        content: [{ type: 'text' as const, text: `Failed to connect to Ollama at ${OLLAMA_HOST}: ${err instanceof Error ? err.message : String(err)}` }],
+        content: [{ type: 'text' as const, text: `Failed to connect to Ollama: ${err instanceof Error ? err.message : String(err)}` }],
         isError: true,
       };
     }
