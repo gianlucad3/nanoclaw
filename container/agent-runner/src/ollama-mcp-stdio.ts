@@ -93,15 +93,18 @@ server.tool(
     model: z.string().describe('The model name (e.g., "llama3.2", "mistral", "gemma2")'),
     prompt: z.string().describe('The prompt to send to the model'),
     system: z.string().optional().describe('Optional system prompt to set model behavior'),
+    num_ctx: z.number().int().optional().describe('Context window size in tokens (default: 65536)'),
   },
   async (args) => {
-    log(`>>> Generating with ${args.model} (${args.prompt.length} chars)...`);
+    const numCtx = args.num_ctx ?? 65536;
+    log(`>>> Generating with ${args.model} (${args.prompt.length} chars, ctx=${numCtx})...`);
     writeStatus('generating', `Generating with ${args.model}`);
     try {
       const body: Record<string, unknown> = {
         model: args.model,
         prompt: args.prompt,
         stream: false,
+        options: { num_ctx: numCtx },
       };
       if (args.system) {
         body.system = args.system;

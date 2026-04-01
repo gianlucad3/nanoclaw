@@ -410,7 +410,8 @@ async function runQuery(
         'TodoWrite', 'ToolSearch', 'Skill',
         'NotebookEdit',
         'mcp__nanoclaw__*',
-        'mcp__ollama__*'
+        'mcp__ollama__*',
+        'mcp__mlx__*'
       ],
       env: sdkEnv,
       permissionMode: 'bypassPermissions',
@@ -429,6 +430,18 @@ async function runQuery(
         ollama: {
           command: 'node',
           args: [path.join(path.dirname(mcpServerPath), 'ollama-mcp-stdio.js')],
+          env: {
+            ...(process.env.OLLAMA_HOST ? { OLLAMA_HOST: process.env.OLLAMA_HOST } : {}),
+            ...(process.env.OLLAMA_ADMIN_TOOLS ? { OLLAMA_ADMIN_TOOLS: process.env.OLLAMA_ADMIN_TOOLS } : {}),
+          },
+        },
+        mlx: {
+          command: 'node',
+          args: [path.join(path.dirname(mcpServerPath), 'mlx-mcp-stdio.js')],
+          env: {
+            ...(process.env.MLX_HOST ? { MLX_HOST: process.env.MLX_HOST } : {}),
+            ...(process.env.MLX_MODEL ? { MLX_MODEL: process.env.MLX_MODEL } : {}),
+          },
         },
       },
       hooks: {

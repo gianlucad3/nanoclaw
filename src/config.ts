@@ -9,6 +9,9 @@ const envConfig = readEnvFile([
   'ASSISTANT_NAME',
   'ASSISTANT_HAS_OWN_NUMBER',
   'OLLAMA_ADMIN_TOOLS',
+  'OLLAMA_HOST',
+  'MLX_HOST',
+  'MLX_MODEL',
   'ONECLI_URL',
   'TZ',
 ]);
@@ -20,6 +23,12 @@ export const ASSISTANT_HAS_OWN_NUMBER =
     envConfig.ASSISTANT_HAS_OWN_NUMBER) === 'true';
 export const OLLAMA_ADMIN_TOOLS =
   (process.env.OLLAMA_ADMIN_TOOLS || envConfig.OLLAMA_ADMIN_TOOLS) === 'true';
+export const OLLAMA_HOST =
+  process.env.OLLAMA_HOST || envConfig.OLLAMA_HOST || '';
+export const MLX_HOST =
+  process.env.MLX_HOST || envConfig.MLX_HOST || '';
+export const MLX_MODEL =
+  process.env.MLX_MODEL || envConfig.MLX_MODEL || '';
 export const POLL_INTERVAL = 2000;
 export const SCHEDULER_POLL_INTERVAL = 60000;
 

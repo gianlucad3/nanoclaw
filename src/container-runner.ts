@@ -14,7 +14,10 @@ import {
   DATA_DIR,
   GROUPS_DIR,
   IDLE_TIMEOUT,
+  MLX_HOST,
+  MLX_MODEL,
   OLLAMA_ADMIN_TOOLS,
+  OLLAMA_HOST,
   TIMEZONE,
 } from './config.js';
 import { resolveGroupFolderPath, resolveGroupIpcPath } from './group-folder.js';
@@ -215,7 +218,7 @@ function buildVolumeMounts(
   return mounts;
 }
 
-function buildContainerArgs(
+export function buildContainerArgs(
   mounts: VolumeMount[],
   containerName: string,
   isMain: boolean,
@@ -224,6 +227,12 @@ function buildContainerArgs(
 
   // Pass host timezone so container's local time matches the user's
   args.push('-e', `TZ=${TIMEZONE}`);
+
+  // Forward local model host addresses so MCP servers use the bridge IP
+  // instead of falling back to host.docker.internal (which doesn't resolve in Apple Container)
+  if (OLLAMA_HOST) args.push('-e', `OLLAMA_HOST=${OLLAMA_HOST}`);
+  if (MLX_HOST) args.push('-e', `MLX_HOST=${MLX_HOST}`);
+  if (MLX_MODEL) args.push('-e', `MLX_MODEL=${MLX_MODEL}`);
 
   // Forward Ollama admin tools flag if enabled
   if (OLLAMA_ADMIN_TOOLS) {

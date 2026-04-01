@@ -115,7 +115,25 @@ Instructions here...
 
 ## Testing
 
-Test your contribution on a fresh clone before submitting. For skills, run the skill end-to-end and verify it works.
+Run `npm test` before submitting any code change. If your change touches config, env forwarding, MCP servers, or the container runner, update the relevant tests too.
+
+**Test files and what they cover:**
+
+| File | Covers |
+|------|--------|
+| `src/mcp-consistency.test.ts` | Auto-validates every MCP server's env forwarding chain end-to-end: `config.ts` → `container-runner.ts` → `mcpServers.env` in `index.ts` → `scripts/claw`. When you add a new MCP server, add its env vars and this test will catch anything missing. |
+| `src/env-forwarding.test.ts` | Runtime unit tests for `buildContainerArgs` — verifies each env var actually appears as a `-e` flag. |
+| `scripts/test-mlx-mcp.mjs` | Integration tests for the MLX MCP server including an env canary test (run manually, requires MLX running). |
+
+**When adding a new MCP server** (`*-mcp-stdio.ts`):
+1. Add the server's env vars to `readEnvFile` in `src/config.ts` and export them.
+2. Forward them via `-e` flags in `buildContainerArgs` in `src/container-runner.ts`.
+3. Add an `env` field in the `mcpServers` config in `container/agent-runner/src/index.ts`.
+4. Add them to `SECRET_KEYS` and the forwarding loop in `scripts/claw`.
+5. Document them in `.env.example`.
+6. Run `npm test` — `mcp-consistency.test.ts` will tell you exactly what's missing.
+
+For skills, run the skill end-to-end and verify it works.
 
 ## Pull Requests
 
