@@ -14,11 +14,14 @@
  *   Final marker after loop ends signals completion.
  */
 
+import './instrumentation.js';
+
 import fs from 'fs';
 import path from 'path';
 import { execFile } from 'child_process';
 import { query, HookCallback, PreCompactHookInput } from '@anthropic-ai/claude-agent-sdk';
 import { fileURLToPath } from 'url';
+import { shutdownTracing } from './instrumentation.js';
 
 interface ContainerInput {
   prompt: string;
@@ -547,6 +550,7 @@ async function main(): Promise<void> {
       result: null,
       error: `Failed to parse input: ${err instanceof Error ? err.message : String(err)}`
     });
+    await shutdownTracing();
     process.exit(1);
   }
 
@@ -640,8 +644,11 @@ async function main(): Promise<void> {
       newSessionId: sessionId,
       error: errorMessage
     });
+    await shutdownTracing();
     process.exit(1);
   }
+
+  await shutdownTracing();
 }
 
 main();
