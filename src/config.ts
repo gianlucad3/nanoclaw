@@ -13,9 +13,6 @@ const envConfig = readEnvFile([
   'MLX_HOST',
   'MLX_MODEL',
   'ONECLI_URL',
-  'PHOENIX_COLLECTOR_ENDPOINT',
-  'PHOENIX_API_KEY',
-  'PHOENIX_PROJECT_NAME',
   'TZ',
 ]);
 
@@ -30,12 +27,6 @@ export const OLLAMA_HOST =
   process.env.OLLAMA_HOST || envConfig.OLLAMA_HOST || '';
 export const MLX_HOST = process.env.MLX_HOST || envConfig.MLX_HOST || '';
 export const MLX_MODEL = process.env.MLX_MODEL || envConfig.MLX_MODEL || '';
-export const PHOENIX_COLLECTOR_ENDPOINT =
-  process.env.PHOENIX_COLLECTOR_ENDPOINT || envConfig.PHOENIX_COLLECTOR_ENDPOINT || '';
-export const PHOENIX_API_KEY =
-  process.env.PHOENIX_API_KEY || envConfig.PHOENIX_API_KEY || '';
-export const PHOENIX_PROJECT_NAME =
-  process.env.PHOENIX_PROJECT_NAME || envConfig.PHOENIX_PROJECT_NAME || '';
 export const POLL_INTERVAL = 2000;
 export const SCHEDULER_POLL_INTERVAL = 60000;
 

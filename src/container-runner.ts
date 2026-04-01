@@ -18,9 +18,6 @@ import {
   MLX_MODEL,
   OLLAMA_ADMIN_TOOLS,
   OLLAMA_HOST,
-  PHOENIX_API_KEY,
-  PHOENIX_COLLECTOR_ENDPOINT,
-  PHOENIX_PROJECT_NAME,
   TIMEZONE,
 } from './config.js';
 import { resolveGroupFolderPath, resolveGroupIpcPath } from './group-folder.js';
@@ -236,11 +233,6 @@ export function buildContainerArgs(
   if (OLLAMA_HOST) args.push('-e', `OLLAMA_HOST=${OLLAMA_HOST}`);
   if (MLX_HOST) args.push('-e', `MLX_HOST=${MLX_HOST}`);
   if (MLX_MODEL) args.push('-e', `MLX_MODEL=${MLX_MODEL}`);
-  if (PHOENIX_COLLECTOR_ENDPOINT)
-    args.push('-e', `PHOENIX_COLLECTOR_ENDPOINT=${PHOENIX_COLLECTOR_ENDPOINT}`);
-  if (PHOENIX_API_KEY) args.push('-e', `PHOENIX_API_KEY=${PHOENIX_API_KEY}`);
-  if (PHOENIX_PROJECT_NAME)
-    args.push('-e', `PHOENIX_PROJECT_NAME=${PHOENIX_PROJECT_NAME}`);
 
   // Forward Ollama admin tools flag if enabled
   if (OLLAMA_ADMIN_TOOLS) {
