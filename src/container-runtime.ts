@@ -120,10 +120,7 @@ export function cleanupOrphans(): void {
     const containers: { status: string; configuration: { id: string } }[] =
       JSON.parse(output || '[]');
     const orphans = containers
-      .filter(
-        (c) =>
-          c.status === 'running' && c.configuration.id.startsWith('nanoclaw-'),
-      )
+      .filter((c) => c.configuration.id.startsWith('nanoclaw-'))
       .map((c) => c.configuration.id);
     for (const name of orphans) {
       try {

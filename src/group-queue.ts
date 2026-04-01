@@ -2,7 +2,7 @@ import { ChildProcess } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 
-import { DATA_DIR, MAX_CONCURRENT_CONTAINERS } from './config.js';
+import { DATA_DIR, MAX_CONCURRENT_CONTAINERS, IDLE_TIMEOUT } from './config.js';
 import { logger } from './logger.js';
 
 interface QueuedTask {
@@ -25,6 +25,7 @@ interface GroupState {
   containerName: string | null;
   groupFolder: string | null;
   retryCount: number;
+  idleTimer: NodeJS.Timeout | null;
 }
 
 export class GroupQueue {
@@ -49,6 +50,7 @@ export class GroupQueue {
         containerName: null,
         groupFolder: null,
         retryCount: 0,
+        idleTimer: null,
       };
       this.groups.set(groupJid, state);
     }
@@ -148,8 +150,28 @@ export class GroupQueue {
   notifyIdle(groupJid: string): void {
     const state = this.getGroup(groupJid);
     state.idleWaiting = true;
+
+    // Clear any existing idle timer
+    if (state.idleTimer) {
+      clearTimeout(state.idleTimer);
+      state.idleTimer = null;
+    }
+
     if (state.pendingTasks.length > 0) {
       this.closeStdin(groupJid);
+    } else {
+      // Start a new idle timer
+      logger.debug(
+        { groupJid, timeoutMs: IDLE_TIMEOUT },
+        'Starting idle timer for container',
+      );
+      state.idleTimer = setTimeout(() => {
+        logger.info(
+          { groupJid, idleTimeout: IDLE_TIMEOUT },
+          'Container idle timeout, closing gracefully',
+        );
+        this.closeStdin(groupJid);
+      }, IDLE_TIMEOUT);
     }
   }
 
@@ -161,7 +183,13 @@ export class GroupQueue {
     const state = this.getGroup(groupJid);
     if (!state.active || !state.groupFolder || state.isTaskContainer)
       return false;
-    state.idleWaiting = false; // Agent is about to receive work, no longer idle
+
+    // Agent is about to receive work, no longer idle
+    state.idleWaiting = false;
+    if (state.idleTimer) {
+      clearTimeout(state.idleTimer);
+      state.idleTimer = null;
+    }
 
     const inputDir = path.join(DATA_DIR, 'ipc', state.groupFolder, 'input');
     try {
@@ -184,6 +212,11 @@ export class GroupQueue {
     const state = this.getGroup(groupJid);
     if (!state.active || !state.groupFolder) return;
 
+    if (state.idleTimer) {
+      clearTimeout(state.idleTimer);
+      state.idleTimer = null;
+    }
+
     const inputDir = path.join(DATA_DIR, 'ipc', state.groupFolder, 'input');
     try {
       fs.mkdirSync(inputDir, { recursive: true });
@@ -203,6 +236,11 @@ export class GroupQueue {
     state.isTaskContainer = false;
     state.pendingMessages = false;
     this.activeCount++;
+
+    if (state.idleTimer) {
+      clearTimeout(state.idleTimer);
+      state.idleTimer = null;
+    }
 
     logger.debug(
       { groupJid, reason, activeCount: this.activeCount },
@@ -226,6 +264,10 @@ export class GroupQueue {
       state.process = null;
       state.containerName = null;
       state.groupFolder = null;
+      if (state.idleTimer) {
+        clearTimeout(state.idleTimer);
+        state.idleTimer = null;
+      }
       this.activeCount--;
       this.drainGroup(groupJid);
     }
@@ -238,6 +280,11 @@ export class GroupQueue {
     state.isTaskContainer = true;
     state.runningTaskId = task.id;
     this.activeCount++;
+
+    if (state.idleTimer) {
+      clearTimeout(state.idleTimer);
+      state.idleTimer = null;
+    }
 
     logger.debug(
       { groupJid, taskId: task.id, activeCount: this.activeCount },
@@ -255,6 +302,10 @@ export class GroupQueue {
       state.process = null;
       state.containerName = null;
       state.groupFolder = null;
+      if (state.idleTimer) {
+        clearTimeout(state.idleTimer);
+        state.idleTimer = null;
+      }
       this.activeCount--;
       this.drainGroup(groupJid);
     }
@@ -352,6 +403,10 @@ export class GroupQueue {
     // This prevents WhatsApp reconnection restarts from killing working agents.
     const activeContainers: string[] = [];
     for (const [_jid, state] of this.groups) {
+      if (state.idleTimer) {
+        clearTimeout(state.idleTimer);
+        state.idleTimer = null;
+      }
       if (state.process && !state.process.killed && state.containerName) {
         activeContainers.push(state.containerName);
       }
