@@ -48,6 +48,10 @@ Four types of skills exist in NanoClaw. See [CONTRIBUTING.md](CONTRIBUTING.md) f
 
 Before creating a PR, adding a skill, or preparing any contribution, you MUST read [CONTRIBUTING.md](CONTRIBUTING.md). It covers accepted change types, the four skill types and their guidelines, SKILL.md format rules, PR requirements, and the pre-submission checklist (searching for existing PRs/issues, testing, description format).
 
+## GitHub Issues
+
+Always create issues on the local fork (`origin` — gianlucad3/nanoclaw), not the upstream repo (qwibitai/nanoclaw). Use `gh issue create -R gianlucad3/nanoclaw`.
+
 ## Development
 
 Run commands directly—don't tell the user to run them.

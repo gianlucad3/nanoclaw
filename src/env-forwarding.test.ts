@@ -76,9 +76,7 @@ describe('buildContainerArgs env forwarding', () => {
       MLX_HOST: 'http://192.168.64.1:11435',
     });
     const args = buildContainerArgs([], 'test-container', true);
-    expect(args.join(' ')).toContain(
-      '-e MLX_HOST=http://192.168.64.1:11435',
-    );
+    expect(args.join(' ')).toContain('-e MLX_HOST=http://192.168.64.1:11435');
   });
 
   it('does NOT forward MLX_HOST when config value is empty', async () => {
