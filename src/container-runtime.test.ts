@@ -113,47 +113,44 @@ describe('ensureContainerRuntimeRunning', () => {
 
 // --- cleanupOrphans ---
 
+// Helper to build a realistic container ls JSON entry (Apple Container format).
+// The container name (nanoclaw-*) is NOT in the JSON — only the UUID id and image reference.
+function makeContainer(id: string, imageRef: string) {
+  return { status: 'running', configuration: { id, image: { reference: imageRef } } };
+}
+
 describe('cleanupOrphans', () => {
-  it('stops orphaned nanoclaw containers from JSON output', () => {
-    // Apple Container ls returns JSON
+  it('stops orphaned nanoclaw-agent containers matched by image reference', () => {
     const lsOutput = JSON.stringify([
-      { status: 'running', configuration: { id: 'nanoclaw-group1-111' } },
-      { status: 'stopped', configuration: { id: 'nanoclaw-group2-222' } },
-      { status: 'running', configuration: { id: 'nanoclaw-group3-333' } },
-      { status: 'running', configuration: { id: 'other-container' } },
+      makeContainer('uuid-aaa-111', 'nanoclaw-agent:latest'),
+      makeContainer('uuid-bbb-222', 'nanoclaw-agent:latest'),
+      makeContainer('uuid-ccc-333', 'nanoclaw-agent:latest'),
+      makeContainer('uuid-ddd-444', 'buildkit:latest'), // not ours
     ]);
     mockExecSync.mockReturnValueOnce(lsOutput);
-    // stop calls succeed
     mockExecSync.mockReturnValue('');
 
     cleanupOrphans();
 
-    // ls + 3 stop calls (all nanoclaw- containers regardless of status)
+    // ls + 3 stop calls (by UUID, not name)
     expect(mockExecSync).toHaveBeenCalledTimes(4);
     expect(mockExecSync).toHaveBeenNthCalledWith(
       2,
-      `${CONTAINER_RUNTIME_BIN} stop nanoclaw-group1-111`,
+      `${CONTAINER_RUNTIME_BIN} stop uuid-aaa-111`,
       { stdio: 'pipe' },
     );
     expect(mockExecSync).toHaveBeenNthCalledWith(
       3,
-      `${CONTAINER_RUNTIME_BIN} stop nanoclaw-group2-222`,
+      `${CONTAINER_RUNTIME_BIN} stop uuid-bbb-222`,
       { stdio: 'pipe' },
     );
     expect(mockExecSync).toHaveBeenNthCalledWith(
       4,
-      `${CONTAINER_RUNTIME_BIN} stop nanoclaw-group3-333`,
+      `${CONTAINER_RUNTIME_BIN} stop uuid-ccc-333`,
       { stdio: 'pipe' },
     );
     expect(logger.info).toHaveBeenCalledWith(
-      {
-        count: 3,
-        names: [
-          'nanoclaw-group1-111',
-          'nanoclaw-group2-222',
-          'nanoclaw-group3-333',
-        ],
-      },
+      { count: 3 },
       'Stopped orphaned containers',
     );
   });
@@ -182,22 +179,18 @@ describe('cleanupOrphans', () => {
 
   it('continues stopping remaining containers when one stop fails', () => {
     const lsOutput = JSON.stringify([
-      { status: 'running', configuration: { id: 'nanoclaw-a-1' } },
-      { status: 'running', configuration: { id: 'nanoclaw-b-2' } },
+      makeContainer('uuid-aaa-1', 'nanoclaw-agent:latest'),
+      makeContainer('uuid-bbb-2', 'nanoclaw-agent:latest'),
     ]);
     mockExecSync.mockReturnValueOnce(lsOutput);
-    // First stop fails
-    mockExecSync.mockImplementationOnce(() => {
-      throw new Error('already stopped');
-    });
-    // Second stop succeeds
+    mockExecSync.mockImplementationOnce(() => { throw new Error('already stopped'); });
     mockExecSync.mockReturnValueOnce('');
 
     cleanupOrphans(); // should not throw
 
     expect(mockExecSync).toHaveBeenCalledTimes(3);
     expect(logger.info).toHaveBeenCalledWith(
-      { count: 2, names: ['nanoclaw-a-1', 'nanoclaw-b-2'] },
+      { count: 2 },
       'Stopped orphaned containers',
     );
   });

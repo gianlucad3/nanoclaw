@@ -117,23 +117,27 @@ export function cleanupOrphans(): void {
       stdio: ['pipe', 'pipe', 'pipe'],
       encoding: 'utf-8',
     });
-    const containers: { status: string; configuration: { id: string } }[] =
-      JSON.parse(output || '[]');
+    const containers: {
+      status: string;
+      configuration: { id: string; image: { reference: string } };
+    }[] = JSON.parse(output || '[]');
+    // Match by image name — the container name (nanoclaw-*) is not exposed in
+    // the JSON output, so filtering by configuration.id.startsWith('nanoclaw-')
+    // never matched anything (id is always a UUID).
     const orphans = containers
-      .filter((c) => c.configuration.id.startsWith('nanoclaw-'))
+      .filter((c) =>
+        c.configuration.image.reference.startsWith('nanoclaw-agent'),
+      )
       .map((c) => c.configuration.id);
-    for (const name of orphans) {
+    for (const id of orphans) {
       try {
-        stopContainer(name);
+        execSync(`${CONTAINER_RUNTIME_BIN} stop ${id}`, { stdio: 'pipe' });
       } catch {
         /* already stopped */
       }
     }
     if (orphans.length > 0) {
-      logger.info(
-        { count: orphans.length, names: orphans },
-        'Stopped orphaned containers',
-      );
+      logger.info({ count: orphans.length }, 'Stopped orphaned containers');
     }
   } catch (err) {
     logger.warn({ err }, 'Failed to clean up orphaned containers');
