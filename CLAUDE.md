@@ -59,6 +59,8 @@ Run commands directly—don't tell the user to run them.
 ```bash
 npm run dev          # Run with hot reload
 npm run build        # Compile TypeScript
+npm test             # Run full test suite (vitest, ~1s)
+npm run test:watch   # Watch mode for TDD
 ./container/build.sh # Rebuild agent container
 ```
 

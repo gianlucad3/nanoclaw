@@ -115,7 +115,21 @@ Instructions here...
 
 ## Testing
 
-Run `npm test` before submitting any code change. If your change touches config, env forwarding, MCP servers, or the container runner, update the relevant tests too.
+```bash
+npm test             # Run full test suite (vitest, ~1s) — run before every PR
+npm run test:watch   # Watch mode for TDD
+```
+
+The test suite covers the host-side Node.js code: container runner, config, routing, channels, database, MCP env forwarding consistency, and more. It does not require containers or network access and completes in about one second.
+
+**Integration tests (run manually):**
+
+| Script | What it tests | Requirements |
+|--------|--------------|--------------|
+| `node scripts/test-mlx-mcp.mjs` | MLX MCP server: happy path, error handling, env canary | Node.js only, spawns a mock HTTP server — no MLX needed |
+| `scripts/test-mlx.sh` | End-to-end MLX connectivity: config, host reachability, container MCP | Running MLX server at `MLX_HOST` |
+
+Run `scripts/test-mlx.sh --skip-container` to check configuration and host connectivity without needing a container build.
 
 **Test files and what they cover:**
 
@@ -123,7 +137,6 @@ Run `npm test` before submitting any code change. If your change touches config,
 |------|--------|
 | `src/mcp-consistency.test.ts` | Auto-validates every MCP server's env forwarding chain end-to-end: `config.ts` → `container-runner.ts` → `mcpServers.env` in `index.ts` → `scripts/claw`. When you add a new MCP server, add its env vars and this test will catch anything missing. |
 | `src/env-forwarding.test.ts` | Runtime unit tests for `buildContainerArgs` — verifies each env var actually appears as a `-e` flag. |
-| `scripts/test-mlx-mcp.mjs` | Integration tests for the MLX MCP server including an env canary test (run manually, requires MLX running). |
 
 **When adding a new MCP server** (`*-mcp-stdio.ts`):
 1. Add the server's env vars to `readEnvFile` in `src/config.ts` and export them.
