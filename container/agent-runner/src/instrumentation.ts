@@ -27,9 +27,12 @@ export let tracerProvider: TracerProvider | null = null;
 const sdkWrapper = { query: _query };
 
 if (endpoint) {
+  const url = endpoint.endsWith('/v1/traces') ? endpoint : `${endpoint.replace(/\/$/, '')}/v1/traces`;
   tracerProvider = register({
     projectName: process.env.PHOENIX_PROJECT_NAME || 'nanoclaw',
-    url: endpoint,
+    url,
+    batch: false, // SimpleSpanProcessor: export each span immediately, no buffering.
+    // batch:true (default) buffers spans for 5s — unreliable for short-lived processes.
     ...(process.env.PHOENIX_API_KEY ? { apiKey: process.env.PHOENIX_API_KEY } : {}),
   });
 
@@ -37,7 +40,7 @@ if (endpoint) {
   instrumentation.manuallyInstrument(sdkWrapper);
 
   // eslint-disable-next-line no-console
-  console.error(`[instrumentation] Phoenix tracing enabled → ${endpoint}`);
+  console.error(`[instrumentation] Phoenix tracing enabled → ${url}`);
 }
 
 // Export the (possibly patched) query for index.ts to use

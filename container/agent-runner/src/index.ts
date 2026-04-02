@@ -534,6 +534,9 @@ async function runScript(script: string): Promise<ScriptResult | null> {
 }
 
 async function main(): Promise<void> {
+  process.env.CLAUDE_CODE_DEBUG_LOGS_DIR = '/workspace/group/logs/sdk-debug.txt';
+  log(`Runner starting as UID=${process.getuid ? process.getuid() : 'unknown'} GID=${process.getgid ? process.getgid() : 'unknown'}`);
+  log(`Debug logs dir (env): ${process.env.CLAUDE_CODE_DEBUG_LOGS_DIR}`);
   let containerInput: ContainerInput;
 
   try {
@@ -553,7 +556,12 @@ async function main(): Promise<void> {
 
   // Credentials are injected by the host's credential proxy via ANTHROPIC_BASE_URL.
   // No real secrets exist in the container environment.
-  const sdkEnv: Record<string, string | undefined> = { ...process.env };
+  const sdkEnv: Record<string, string | undefined> = {
+    ...process.env,
+    DEBUG_CLAUDE_AGENT_SDK: '1',
+    DEBUG: '1',
+    VERBOSE: '1',
+  };
 
   const __dirname = path.dirname(fileURLToPath(import.meta.url));
   const mcpServerPath = path.join(__dirname, 'ipc-mcp-stdio.js');
@@ -648,4 +656,7 @@ async function main(): Promise<void> {
   await shutdownTracing();
 }
 
-main();
+main().catch((err) => {
+  log(`Unhandled error: ${err instanceof Error ? err.message : String(err)}`);
+  process.exit(1);
+});
