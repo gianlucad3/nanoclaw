@@ -116,7 +116,10 @@ describe('ensureContainerRuntimeRunning', () => {
 // Helper to build a realistic container ls JSON entry (Apple Container format).
 // The container name (nanoclaw-*) is NOT in the JSON — only the UUID id and image reference.
 function makeContainer(id: string, imageRef: string) {
-  return { status: 'running', configuration: { id, image: { reference: imageRef } } };
+  return {
+    status: 'running',
+    configuration: { id, image: { reference: imageRef } },
+  };
 }
 
 describe('cleanupOrphans', () => {
@@ -183,7 +186,9 @@ describe('cleanupOrphans', () => {
       makeContainer('uuid-bbb-2', 'nanoclaw-agent:latest'),
     ]);
     mockExecSync.mockReturnValueOnce(lsOutput);
-    mockExecSync.mockImplementationOnce(() => { throw new Error('already stopped'); });
+    mockExecSync.mockImplementationOnce(() => {
+      throw new Error('already stopped');
+    });
     mockExecSync.mockReturnValueOnce('');
 
     cleanupOrphans(); // should not throw

@@ -271,11 +271,11 @@ export function buildContainerArgs(
   args.push(...hostGatewayArgs());
 
   // Run as host user so bind-mounted files are accessible.
-  // Skip when running as root (uid 0), as the container's node user (uid 1000),
-  // or when getuid is unavailable (native Windows without WSL).
+  // Skip when running as root (uid 0) or when getuid is unavailable
+  // (native Windows without WSL).
   const hostUid = process.getuid?.();
   const hostGid = process.getgid?.();
-  if (hostUid != null && hostUid !== 0 && hostUid !== 1000) {
+  if (hostUid != null && hostUid !== 0) {
     if (isMain) {
       // Main containers start as root so the entrypoint can mount --bind
       // to shadow .env. Privileges are dropped via setpriv in entrypoint.sh.

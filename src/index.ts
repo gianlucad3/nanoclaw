@@ -523,12 +523,16 @@ function ensureContainerSystemRunning(): void {
 }
 
 async function main(): Promise<void> {
-  ensureContainerSystemRunning();
+  ensureContainerRuntimeRunning();
   initDatabase();
   logger.info('Database initialized');
   loadState();
 
+  // Bind the proxy before cleanupOrphans so bridge100 is still up when we bind.
+  // Once bound, the socket survives bridge100 going away and recovers when the
+  // next container start brings bridge100 back.
   await startCredentialProxy(CREDENTIAL_PROXY_PORT, PROXY_BIND_HOST);
+  cleanupOrphans();
 
   restoreRemoteControl();
 

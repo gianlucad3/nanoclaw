@@ -237,9 +237,14 @@ describe('Apple Container networking — no unresolvable hostnames', () => {
       .filter((f) => f.endsWith('-mcp-stdio.ts'));
 
     for (const file of mcpFiles) {
-      const source = fs.readFileSync(path.join(AGENT_RUNNER_DIR, file), 'utf-8');
+      const source = fs.readFileSync(
+        path.join(AGENT_RUNNER_DIR, file),
+        'utf-8',
+      );
       // Allow references in comments; catch uses in string literals (quotes)
-      const stringLiterals = [...source.matchAll(/['"`][^'"`]*host\.docker\.internal[^'"`]*['"`]/g)];
+      const stringLiterals = [
+        ...source.matchAll(/['"`][^'"`]*host\.docker\.internal[^'"`]*['"`]/g),
+      ];
       expect(
         stringLiterals.length,
         `${file} contains "host.docker.internal" in a string literal. ` +

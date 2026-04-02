@@ -211,8 +211,12 @@ def run_container(runtime: str, image: str, payload: dict,
             # Kill the container as soon as we see the closing sentinel —
             # the Node.js event loop often keeps the process alive indefinitely.
             if line.strip() == "---NANOCLAW_OUTPUT_END---":
-                dbg("output sentinel found, terminating container")
+                dbg("output sentinel found, waiting for traces to flush...")
                 done.set()
+                # Wait 5s for the container to finish flushing traces/shutdown naturally
+                # before we send the terminate signal.
+                import time
+                time.sleep(5)
                 try:
                     proc.terminate()
                     try:
