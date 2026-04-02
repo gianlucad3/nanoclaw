@@ -112,19 +112,48 @@ def find_group(groups: list[dict], query: str) -> dict | None:
 
 
 def build_mounts(folder: str, is_main: bool) -> list[tuple[str, str, bool]]:
-    """Return list of (host_path, container_path, readonly) tuples."""
-    groups_dir  = NANOCLAW_DIR / "groups"
-    data_dir    = NANOCLAW_DIR / "data"
+    """Return list of (host_path, container_path, readonly) tuples.
+
+    Mirrors buildVolumeMounts() in src/container-runner.ts exactly so that
+    claw containers see the same filesystem as production containers.
+    """
+    import shutil
+
+    groups_dir   = NANOCLAW_DIR / "groups"
+    data_dir     = NANOCLAW_DIR / "data"
     sessions_dir = data_dir / "sessions" / folder
-    ipc_dir     = data_dir / "ipc" / folder
+    ipc_dir      = data_dir / "ipc" / folder
+    claude_dir   = sessions_dir / ".claude"
 
     # Ensure required dirs exist
     group_dir = groups_dir / folder
     group_dir.mkdir(parents=True, exist_ok=True)
-    (sessions_dir / ".claude").mkdir(parents=True, exist_ok=True)
+    claude_dir.mkdir(parents=True, exist_ok=True)
     for sub in ("messages", "tasks", "input"):
         (ipc_dir / sub).mkdir(parents=True, exist_ok=True)
 
+    # Create settings.json matching what container-runner.ts writes, so agent
+    # teams and additional CLAUDE.md directory loading are enabled.
+    settings_file = claude_dir / "settings.json"
+    if not settings_file.exists():
+        settings_file.write_text(json.dumps({
+            "env": {
+                "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1",
+                "CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD": "1",
+                "CLAUDE_CODE_DISABLE_AUTO_MEMORY": "0",
+            }
+        }, indent=2) + "\n")
+
+    # Sync container skills into .claude/skills/ (same as container-runner.ts)
+    skills_src = NANOCLAW_DIR / "container" / "skills"
+    if skills_src.exists():
+        skills_dst = claude_dir / "skills"
+        for skill_dir in skills_src.iterdir():
+            if skill_dir.is_dir():
+                shutil.copytree(skill_dir, skills_dst / skill_dir.name,
+                                dirs_exist_ok=True)
+
+    # Sync agent-runner source (same as container-runner.ts)
     agent_runner_src = sessions_dir / "agent-runner-src"
     project_agent_runner = NANOCLAW_DIR / "container" / "agent-runner" / "src"
     if project_agent_runner.exists():
@@ -132,17 +161,22 @@ def build_mounts(folder: str, is_main: bool) -> list[tuple[str, str, bool]]:
         for src_file in project_agent_runner.iterdir():
             dst_file = agent_runner_src / src_file.name
             if not dst_file.exists() or src_file.stat().st_mtime > dst_file.stat().st_mtime:
-                import shutil
                 shutil.copy2(src_file, dst_file)
 
     mounts: list[tuple[str, str, bool]] = []
     if is_main:
+        # Main: project root read-only (agent has access to nanoclaw codebase)
         mounts.append((str(NANOCLAW_DIR), "/workspace/project", True))
-    mounts.append((str(group_dir),           "/workspace/group",    False))
-    mounts.append((str(sessions_dir / ".claude"), "/home/node/.claude", False))
-    mounts.append((str(ipc_dir),             "/workspace/ipc",      False))
+    else:
+        # Non-main: global memory directory (persona / shared instructions)
+        global_dir = groups_dir / "global"
+        if global_dir.exists():
+            mounts.append((str(global_dir), "/workspace/global", True))
+    mounts.append((str(group_dir),   "/workspace/group",    False))
+    mounts.append((str(claude_dir),  "/home/node/.claude",  False))
+    mounts.append((str(ipc_dir),     "/workspace/ipc",      False))
     if agent_runner_src.exists():
-        mounts.append((str(agent_runner_src), "/app/src",           False))
+        mounts.append((str(agent_runner_src), "/app/src", False))
     return mounts
 
 
@@ -159,9 +193,20 @@ def run_container(runtime: str, image: str, payload: dict,
     proxy_host = secrets.get("CREDENTIAL_PROXY_HOST") or "192.168.64.1"
     proxy_port = secrets.get("CREDENTIAL_PROXY_PORT") or "3001"
     cmd += ["-e", f"ANTHROPIC_BASE_URL=http://{proxy_host}:{proxy_port}"]
-    # Forward all secrets from .env (except proxy vars consumed above to build ANTHROPIC_BASE_URL)
-    for key, val in secrets.items():
-        if key not in ("CREDENTIAL_PROXY_HOST", "CREDENTIAL_PROXY_PORT") and val:
+
+    # Forward only the env vars that container-runner.ts forwards — not the
+    # full .env dump (avoids leaking TELEGRAM_BOT_TOKEN, DOCKER_HOST, etc.
+    # into containers that don't need them and don't match production).
+    _FORWARDED_KEYS = {
+        "TZ", "OLLAMA_HOST", "MLX_HOST", "MLX_MODEL",
+        "PHOENIX_COLLECTOR_ENDPOINT", "PHOENIX_API_KEY", "PHOENIX_PROJECT_NAME",
+        "OLLAMA_ADMIN_TOOLS",
+        # Auth: forward whichever token type is configured
+        "CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY",
+    }
+    for key in _FORWARDED_KEYS:
+        val = secrets.get(key)
+        if val:
             cmd += ["-e", f"{key}={val}"]
     if folder:
         for host, container, readonly in build_mounts(folder, is_main):
@@ -369,8 +414,11 @@ def main():
         "isMain": is_main,
         "secrets": secrets,
     }
-    if group_name:
-        payload["groupFolder"] = group_name
+    if group_folder:
+        payload["groupFolder"] = group_folder
+        assistant_name = secrets.get("ASSISTANT_NAME")
+        if assistant_name:
+            payload["assistantName"] = assistant_name
     if args.session:
         payload["sessionId"] = args.session
         payload["resumeAt"] = "latest"
