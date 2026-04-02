@@ -87,6 +87,34 @@ scripts/services logs <name>
 scripts/services setup          # re-run setup for local services
 ```
 
+## Rebuild & Restart
+
+After making changes, use the appropriate steps for the type of change. Running containers keep old code until stopped — always kill them before testing.
+
+**Host-side TypeScript changes (`src/`):**
+```bash
+npm run build
+launchctl kickstart -k gui/$(id -u)/com.nanoclaw  # macOS
+# systemctl --user restart nanoclaw               # Linux
+container stop --all  # kill running agents so they pick up the new host code
+```
+
+**Agent runner source changes (`container/agent-runner/src/`):**
+
+No image rebuild needed — the entrypoint recompiles `/app/src` on every container start and container-runner.ts syncs updated files automatically. Just kill running agents and restart the host:
+```bash
+container stop --all
+launchctl kickstart -k gui/$(id -u)/com.nanoclaw  # macOS
+```
+
+**Container Dockerfile or package.json changes (`container/`):**
+```bash
+container stop buildkit   # bust build cache (required for clean rebuild)
+./container/build.sh      # rebuild image
+container stop --all      # kill running agents with the old image
+launchctl kickstart -k gui/$(id -u)/com.nanoclaw  # macOS
+```
+
 ## Troubleshooting
 
 **WhatsApp not connecting after upgrade:** WhatsApp is now a separate skill, not bundled in core. Run `/add-whatsapp` (or `npx tsx scripts/apply-skill.ts .claude/skills/add-whatsapp && npm run build`) to install it. Existing auth credentials and groups are preserved.
