@@ -90,7 +90,13 @@ def read_secrets(env_file: Path) -> dict:
             continue
         if "=" in line:
             key, _, val = line.partition("=")
-            secrets[key.strip()] = val.strip()
+            key = key.strip()
+            val = val.strip()
+            # Strip matching quotes (parity with src/env.ts)
+            if len(val) >= 2 and ((val.startswith('"') and val.endswith('"')) or
+                                  (val.startswith("'") and val.endswith("'"))):
+                val = val[1:-1]
+            secrets[key] = val
     return secrets
 
 
@@ -119,7 +125,7 @@ def find_group(groups: list[dict], query: str) -> dict | None:
     return None
 
 
-def build_mounts(folder: str, is_main: bool) -> list[tuple[str, str, bool]]:
+def build_mounts(folder: str, is_main: bool, force_exists: bool = False) -> list[tuple[str, str, bool]]:
     """Return list of (host_path, container_path, readonly) tuples.
 
     Mirrors buildVolumeMounts() in src/container-runner.ts exactly so that
@@ -135,15 +141,16 @@ def build_mounts(folder: str, is_main: bool) -> list[tuple[str, str, bool]]:
 
     # Ensure required dirs exist
     group_dir = groups_dir / folder
-    group_dir.mkdir(parents=True, exist_ok=True)
-    claude_dir.mkdir(parents=True, exist_ok=True)
-    for sub in ("messages", "tasks", "input"):
-        (ipc_dir / sub).mkdir(parents=True, exist_ok=True)
+    if not force_exists:
+        group_dir.mkdir(parents=True, exist_ok=True)
+        claude_dir.mkdir(parents=True, exist_ok=True)
+        for sub in ("messages", "tasks", "input"):
+            (ipc_dir / sub).mkdir(parents=True, exist_ok=True)
 
     # Create settings.json matching what container-runner.ts writes, so agent
     # teams and additional CLAUDE.md directory loading are enabled.
     settings_file = claude_dir / "settings.json"
-    if not settings_file.exists():
+    if not force_exists and not settings_file.exists():
         settings_file.write_text(json.dumps({
             "env": {
                 "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1",
@@ -154,7 +161,7 @@ def build_mounts(folder: str, is_main: bool) -> list[tuple[str, str, bool]]:
 
     # Sync container skills into .claude/skills/ (same as container-runner.ts)
     skills_src = NANOCLAW_DIR / "container" / "skills"
-    if skills_src.exists():
+    if not force_exists and skills_src.exists():
         skills_dst = claude_dir / "skills"
         for skill_dir in skills_src.iterdir():
             if skill_dir.is_dir():
@@ -165,26 +172,33 @@ def build_mounts(folder: str, is_main: bool) -> list[tuple[str, str, bool]]:
     agent_runner_src = sessions_dir / "agent-runner-src"
     project_agent_runner = NANOCLAW_DIR / "container" / "agent-runner" / "src"
     if project_agent_runner.exists():
-        agent_runner_src.mkdir(parents=True, exist_ok=True)
-        for src_file in project_agent_runner.iterdir():
-            dst_file = agent_runner_src / src_file.name
-            if not dst_file.exists() or src_file.stat().st_mtime > dst_file.stat().st_mtime:
-                shutil.copy2(src_file, dst_file)
+        if not force_exists:
+            agent_runner_src.mkdir(parents=True, exist_ok=True)
+            for src_file in project_agent_runner.iterdir():
+                dst_file = agent_runner_src / src_file.name
+                if not dst_file.exists() or src_file.stat().st_mtime > dst_file.stat().st_mtime:
+                    shutil.copy2(src_file, dst_file)
 
     mounts: list[tuple[str, str, bool]] = []
     if is_main:
         # Main: project root read-only (agent has access to nanoclaw codebase)
-        mounts.append((str(NANOCLAW_DIR), "/workspace/project", True))
+        if force_exists or NANOCLAW_DIR.exists():
+            mounts.append((str(NANOCLAW_DIR), "/workspace/project", True))
     
     # Non-main: global memory directory (persona / shared instructions)
     # Always mounted if exists (matches TS behavior)
-    if not is_main:
-        mounts.append((str(groups_dir / "global"), "/workspace/global", True))
+    global_dir = groups_dir / "global"
+    if not is_main and (force_exists or global_dir.exists()):
+        mounts.append((str(global_dir), "/workspace/global", True))
 
-    mounts.append((str(group_dir),   "/workspace/group",    False))
-    mounts.append((str(claude_dir),  "/home/node/.claude",  False))
-    mounts.append((str(ipc_dir),     "/workspace/ipc",      False))
-    mounts.append((str(agent_runner_src), "/app/src",       False))
+    if force_exists or group_dir.exists():
+        mounts.append((str(group_dir),   "/workspace/group",    False))
+    if force_exists or claude_dir.exists():
+        mounts.append((str(claude_dir),  "/home/node/.claude",  False))
+    if force_exists or ipc_dir.exists():
+        mounts.append((str(ipc_dir),     "/workspace/ipc",      False))
+    if force_exists or agent_runner_src.exists():
+        mounts.append((str(agent_runner_src), "/app/src",       False))
     return mounts
 
 
@@ -353,6 +367,7 @@ def main():
     parser.add_argument("--dry-run", action="store_true", help="Print configuration JSON and exit")
     parser.add_argument("--dry-run-folder", help="Folder to use for dry-run (skips DB)")
     parser.add_argument("--dry-run-main", action="store_true", help="Treat dry-run folder as main")
+    parser.add_argument("--dry-run-exists", action="store_true", help="Bypass existence checks in build_mounts")
 
     args = parser.parse_args()
 
@@ -366,6 +381,7 @@ def main():
 
         folder = args.dry_run_folder or "test-group"
         is_main = args.dry_run_main
+        force_exists = args.dry_run_exists
 
         # Use a temporary directory to avoid side-effects on the real filesystem
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -375,7 +391,7 @@ def main():
             # Re-initialize paths derived from NANOCLAW_DIR
             ipc_dir = Path(tmpdir) / "data" / "ipc" / folder
             
-            mounts_raw = build_mounts(folder, is_main)
+            mounts_raw = build_mounts(folder, is_main, force_exists=force_exists)
             
             # Normalize paths for comparison: replace host path with $PROJECT_ROOT/
             # but keep container paths as-is.
@@ -386,9 +402,18 @@ def main():
                     "readonly": readonly
                 })
 
-            # Re-read settings.json from the temp dir
-            claude_dir = Path(tmpdir) / "data" / "sessions" / folder / ".claude"
-            settings_json = json.loads((claude_dir / "settings.json").read_text())
+            # Re-read settings.json from the temp dir, or use contract defaults if force_exists
+            if not force_exists:
+                claude_dir = Path(tmpdir) / "data" / "sessions" / folder / ".claude"
+                settings_json = json.loads((claude_dir / "settings.json").read_text())
+            else:
+                settings_json = {
+                    "env": {
+                        "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1",
+                        "CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD": "1",
+                        "CLAUDE_CODE_DISABLE_AUTO_MEMORY": "0",
+                    }
+                }
 
             output = {
                 "mounts": mounts,

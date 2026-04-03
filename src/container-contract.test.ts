@@ -105,7 +105,7 @@ describe('Container Contract Parity', () => {
   describe('Group C: Cross-check (TS vs Claw)', () => {
     const runClawDryRun = (folder: string, isMain: boolean) => {
       const mainFlag = isMain ? '--dry-run-main' : '';
-      const cmd = `python3 scripts/claw --dry-run --dry-run-folder ${folder} ${mainFlag}`;
+      const cmd = `python3 scripts/claw --dry-run --dry-run-exists --dry-run-folder ${folder} ${mainFlag}`;
       const stdout = execSync(cmd, { encoding: 'utf8' });
       return JSON.parse(stdout);
     };
