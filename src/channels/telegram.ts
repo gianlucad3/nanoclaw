@@ -295,7 +295,7 @@ export class TelegramChannel implements Channel {
       const buffer = Buffer.from(base64, 'base64');
       // Grammy InputFile can take a buffer
       const photo = new (await import('grammy')).InputFile(buffer, 'image.png');
-      
+
       await this.bot.api.sendPhoto(numericId, photo, {
         caption,
         parse_mode: 'Markdown',

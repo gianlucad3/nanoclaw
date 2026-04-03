@@ -170,9 +170,9 @@ describe('container-runner image support', () => {
     expect(result.status).toBe('success');
     expect(result.images).toEqual(testImages);
     expect(onOutput).toHaveBeenCalledWith(
-      expect.objectContaining({ 
+      expect.objectContaining({
         result: 'Here is an image',
-        images: testImages
+        images: testImages,
       }),
     );
   });

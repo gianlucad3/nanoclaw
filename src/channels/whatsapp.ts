@@ -392,7 +392,10 @@ export class WhatsAppChannel implements Channel {
     caption?: string,
   ): Promise<void> {
     if (!this.connected) {
-      logger.warn({ jid }, 'WA disconnected, cannot send image (queuing not supported for images yet)');
+      logger.warn(
+        { jid },
+        'WA disconnected, cannot send image (queuing not supported for images yet)',
+      );
       return;
     }
 

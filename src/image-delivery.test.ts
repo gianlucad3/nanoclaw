@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import * as containerRunner from './container-runner.js';
-import { 
-  processGroupMessages, 
-  _setRegisteredGroups, 
-  _setChannels 
+import {
+  processGroupMessages,
+  _setRegisteredGroups,
+  _setChannels,
 } from './index.js';
 import * as db from './db.js';
 import { Channel, RegisteredGroup, NewMessage } from './types.js';
@@ -32,7 +32,8 @@ vi.mock('./db.js', () => ({
 }));
 
 vi.mock('./config.js', async () => {
-  const actual = await vi.importActual<typeof import('./config.js')>('./config.js');
+  const actual =
+    await vi.importActual<typeof import('./config.js')>('./config.js');
   return {
     ...actual,
     ASSISTANT_NAME: 'Andy',
@@ -67,32 +68,46 @@ describe('Image delivery in processGroupMessages', () => {
   });
 
   it('calls channel.sendImage when agent returns images', async () => {
-    const mockMessages: NewMessage[] = [{
-      id: 'msg1',
-      chat_jid: chatJid,
-      sender: 'user1',
-      sender_name: 'User One',
-      content: '@Andy show me a cat',
-      timestamp: new Date().toISOString(),
-    }];
+    const mockMessages: NewMessage[] = [
+      {
+        id: 'msg1',
+        chat_jid: chatJid,
+        sender: 'user1',
+        sender_name: 'User One',
+        content: '@Andy show me a cat',
+        timestamp: new Date().toISOString(),
+      },
+    ];
 
     vi.mocked(db.getMessagesSince).mockReturnValue(mockMessages);
-    
+
     // Simulate container outputting an image
-    vi.mocked(containerRunner.runContainerAgent).mockImplementation(async (g, input, onProcess, onOutput) => {
-      if (onOutput) {
-        await onOutput({
+    vi.mocked(containerRunner.runContainerAgent).mockImplementation(
+      async (g, input, onProcess, onOutput) => {
+        if (onOutput) {
+          await onOutput({
+            status: 'success',
+            result: 'Here is a cat',
+            images: ['base64-cat-image'],
+          });
+        }
+        return {
           status: 'success',
           result: 'Here is a cat',
           images: ['base64-cat-image'],
-        });
-      }
-      return { status: 'success', result: 'Here is a cat', images: ['base64-cat-image'] };
-    });
+        };
+      },
+    );
 
     await processGroupMessages(chatJid);
 
-    expect(mockChannel.sendImage).toHaveBeenCalledWith(chatJid, 'base64-cat-image');
-    expect(mockChannel.sendMessage).toHaveBeenCalledWith(chatJid, 'Here is a cat');
+    expect(mockChannel.sendImage).toHaveBeenCalledWith(
+      chatJid,
+      'base64-cat-image',
+    );
+    expect(mockChannel.sendMessage).toHaveBeenCalledWith(
+      chatJid,
+      'Here is a cat',
+    );
   });
 });
