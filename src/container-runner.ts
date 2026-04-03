@@ -56,6 +56,7 @@ export interface ContainerOutput {
   result: string | null;
   newSessionId?: string;
   error?: string;
+  images?: string[]; // Array of base64-encoded images
 }
 
 export interface VolumeMount {
@@ -348,19 +349,20 @@ export async function runContainerAgent(
     });
 
     onProcess(container, containerName);
+let stdout = '';
+let stderr = '';
+let stdoutTruncated = false;
+let stderrTruncated = false;
 
-    let stdout = '';
-    let stderr = '';
-    let stdoutTruncated = false;
-    let stderrTruncated = false;
+container.stdin.write(JSON.stringify(input));
+container.stdin.end();
 
-    container.stdin.write(JSON.stringify(input));
-    container.stdin.end();
+// Streaming output: parse OUTPUT_START/END marker pairs as they arrive
+let parseBuffer = '';
+let newSessionId: string | undefined;
+let lastOutput: Partial<ContainerOutput> = {};
+let outputChain = Promise.resolve();
 
-    // Streaming output: parse OUTPUT_START/END marker pairs as they arrive
-    let parseBuffer = '';
-    let newSessionId: string | undefined;
-    let outputChain = Promise.resolve();
 
     container.stdout.on('data', (data) => {
       const chunk = data.toString();
@@ -398,7 +400,17 @@ export async function runContainerAgent(
             if (parsed.newSessionId) {
               newSessionId = parsed.newSessionId;
             }
-            hadStreamingOutput = true;
+            // Merge into lastOutput so we don't lose images or other state from previous markers
+            lastOutput = { 
+              ...lastOutput, 
+              ...parsed, 
+              newSessionId: newSessionId || parsed.newSessionId 
+            };
+
+            if (parsed.result !== null || (parsed.images && parsed.images.length > 0)) {
+              hadStreamingOutput = true;
+            }
+
             // Activity detected — reset the hard timeout
             resetTimeout();
             // Call onOutput for all markers (including null results)
@@ -617,13 +629,14 @@ export async function runContainerAgent(
       if (onOutput) {
         outputChain.then(() => {
           logger.info(
-            { group: group.name, duration, newSessionId },
+            { group: group.name, duration, newSessionId, imageCount: lastOutput.images?.length || 0 },
             'Container completed (streaming mode)',
           );
           resolve({
             status: 'success',
-            result: null,
+            result: lastOutput.result || null,
             newSessionId,
+            images: lastOutput.images,
           });
         });
         return;

@@ -429,7 +429,7 @@ def main():
                     "host": "192.168.64.1",
                     "port": "3001"
                 },
-                "ipcSubdirectories": ["messages", "tasks", "input"]
+                "ipcSubdirectories": ["messages", "tasks", "input", "images"]
             }
             print(json.dumps(output, indent=2))
             # Restore original (optional, we're exiting)

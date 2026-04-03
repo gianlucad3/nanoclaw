@@ -14,6 +14,7 @@ import { CronExpressionParser } from 'cron-parser';
 const IPC_DIR = '/workspace/ipc';
 const MESSAGES_DIR = path.join(IPC_DIR, 'messages');
 const TASKS_DIR = path.join(IPC_DIR, 'tasks');
+const IMAGES_DIR = path.join(IPC_DIR, 'images');
 
 // Context from environment variables (set by the agent runner)
 const chatJid = process.env.NANOCLAW_CHAT_JID!;
@@ -38,6 +39,43 @@ const server = new McpServer({
   name: 'nanoclaw',
   version: '1.0.0',
 });
+
+server.tool(
+  'return_image',
+  'Return an image to the chat. Provide the absolute path to the image file (e.g., /workspace/group/plots/chart.png). The image will be base64-encoded and sent to the user.',
+  {
+    path: z.string().describe('Absolute path to the image file in the container'),
+    caption: z.string().optional().describe('Optional caption for the image'),
+  },
+  async (args) => {
+    if (!fs.existsSync(args.path)) {
+      return {
+        content: [{ type: 'text' as const, text: `Image not found at ${args.path}` }],
+        isError: true,
+      };
+    }
+
+    try {
+      const buffer = fs.readFileSync(args.path);
+      const base64 = buffer.toString('base64');
+      const data = {
+        type: 'image',
+        base64,
+        caption: args.caption,
+        timestamp: new Date().toISOString(),
+      };
+
+      writeIpcFile(IMAGES_DIR, data);
+
+      return { content: [{ type: 'text' as const, text: 'Image attached to response.' }] };
+    } catch (err) {
+      return {
+        content: [{ type: 'text' as const, text: `Failed to read image: ${err instanceof Error ? err.message : String(err)}` }],
+        isError: true,
+      };
+    }
+  },
+);
 
 server.tool(
   'send_message',

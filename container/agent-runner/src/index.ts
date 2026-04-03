@@ -57,6 +57,7 @@ interface SDKUserMessage {
 }
 
 const IPC_INPUT_DIR = '/workspace/ipc/input';
+const IPC_IMAGES_DIR = '/workspace/ipc/images';
 const IPC_INPUT_CLOSE_SENTINEL = path.join(IPC_INPUT_DIR, '_close');
 const IPC_POLL_MS = 500;
 
@@ -304,6 +305,37 @@ function drainIpcInput(): string[] {
 }
 
 /**
+ * Drain all pending IPC image messages.
+ */
+function drainIpcImages(): string[] {
+  try {
+    if (!fs.existsSync(IPC_IMAGES_DIR)) return [];
+    const files = fs.readdirSync(IPC_IMAGES_DIR)
+      .filter(f => f.endsWith('.json'))
+      .sort();
+
+    const images: string[] = [];
+    for (const file of files) {
+      const filePath = path.join(IPC_IMAGES_DIR, file);
+      try {
+        const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+        fs.unlinkSync(filePath);
+        if (data.type === 'image' && data.base64) {
+          images.push(data.base64);
+        }
+      } catch (err) {
+        log(`Failed to process image file ${file}: ${err instanceof Error ? err.message : String(err)}`);
+        try { fs.unlinkSync(filePath); } catch { /* ignore */ }
+      }
+    }
+    return images;
+  } catch (err) {
+    log(`Image IPC drain error: ${err instanceof Error ? err.message : String(err)}`);
+    return [];
+  }
+}
+
+/**
  * Wait for a new IPC message or _close sentinel.
  * Returns the messages as a single string, or null if _close.
  */
@@ -338,13 +370,14 @@ async function runQuery(
   containerInput: ContainerInput,
   sdkEnv: Record<string, string | undefined>,
   resumeAt?: string,
-): Promise<{ newSessionId?: string; lastAssistantUuid?: string; closedDuringQuery: boolean }> {
+): Promise<{ newSessionId?: string; lastAssistantUuid?: string; closedDuringQuery: boolean; images: string[] }> {
   const stream = new MessageStream();
   stream.push(prompt);
 
-  // Poll IPC for follow-up messages and _close sentinel during the query
+  // Poll IPC for follow-up messages, images, and _close sentinel during the query
   let ipcPolling = true;
   let closedDuringQuery = false;
+  const capturedImages: string[] = [];
   const pollIpcDuringQuery = () => {
     if (!ipcPolling) return;
     if (shouldClose()) {
@@ -358,6 +391,11 @@ async function runQuery(
     for (const text of messages) {
       log(`Piping IPC message into active query (${text.length} chars)`);
       stream.push(text);
+    }
+    const images = drainIpcImages();
+    if (images.length > 0) {
+      log(`Captured ${images.length} images from IPC`);
+      capturedImages.push(...images);
     }
     setTimeout(pollIpcDuringQuery, IPC_POLL_MS);
   };
@@ -471,17 +509,22 @@ async function runQuery(
       resultCount++;
       const textResult = 'result' in message ? (message as { result?: string }).result : null;
       log(`Result #${resultCount}: subtype=${message.subtype}${textResult ? ` text=${textResult.slice(0, 200)}` : ''}`);
+      
+      const imagesToEmit = [...capturedImages];
+      capturedImages.length = 0; // Clear so they are only emitted once
+
       writeOutput({
         status: 'success',
         result: textResult || null,
-        newSessionId
+        newSessionId,
+        images: imagesToEmit.length > 0 ? imagesToEmit : undefined
       });
     }
   }
 
   ipcPolling = false;
   log(`Query done. Messages: ${messageCount}, results: ${resultCount}, lastAssistantUuid: ${lastAssistantUuid || 'none'}, closedDuringQuery: ${closedDuringQuery}`);
-  return { newSessionId, lastAssistantUuid, closedDuringQuery };
+  return { newSessionId, lastAssistantUuid, closedDuringQuery, images: capturedImages };
 }
 
 interface ScriptResult {

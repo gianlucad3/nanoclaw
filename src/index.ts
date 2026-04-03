@@ -188,11 +188,18 @@ export function _setRegisteredGroups(
   registeredGroups = groups;
 }
 
+/** @internal - exported for testing */
+export function _setChannels(newChannels: Channel[]): void {
+  channels.length = 0;
+  channels.push(...newChannels);
+}
+
 /**
  * Process all pending messages for a group.
  * Called by the GroupQueue when it's this group's turn.
+ * @internal
  */
-async function processGroupMessages(chatJid: string): Promise<boolean> {
+export async function processGroupMessages(chatJid: string): Promise<boolean> {
   const group = registeredGroups[chatJid];
   if (!group) return true;
 
@@ -259,6 +266,13 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
 
   const output = await runAgent(group, prompt, chatJid, async (result) => {
     // Streaming output callback — called for each agent result
+    if (result.images && result.images.length > 0) {
+      for (const base64 of result.images) {
+        await channel.sendImage?.(chatJid, base64);
+      }
+      resetIdleTimer();
+    }
+
     if (result.result) {
       const raw =
         typeof result.result === 'string'
@@ -310,7 +324,8 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
   return true;
 }
 
-async function runAgent(
+/** @internal */
+export async function runAgent(
   group: RegisteredGroup,
   prompt: string,
   chatJid: string,

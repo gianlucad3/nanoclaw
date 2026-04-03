@@ -283,6 +283,29 @@ export class TelegramChannel implements Channel {
     }
   }
 
+  async sendImage(
+    jid: string,
+    base64: string,
+    caption?: string,
+  ): Promise<void> {
+    if (!this.bot) return;
+
+    try {
+      const numericId = jid.replace(/^tg:/, '');
+      const buffer = Buffer.from(base64, 'base64');
+      // Grammy InputFile can take a buffer
+      const photo = new (await import('grammy')).InputFile(buffer, 'image.png');
+      
+      await this.bot.api.sendPhoto(numericId, photo, {
+        caption,
+        parse_mode: 'Markdown',
+      });
+      logger.info({ jid, caption }, 'Telegram image sent');
+    } catch (err) {
+      logger.error({ jid, err }, 'Failed to send Telegram image');
+    }
+  }
+
   isConnected(): boolean {
     return this.bot !== null;
   }

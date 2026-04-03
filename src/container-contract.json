@@ -7,7 +7,7 @@
     "claude": "/home/node/.claude",
     "agentRunnerSrc": "/app/src"
   },
-  "ipcSubdirectories": ["messages", "tasks", "input"],
+  "ipcSubdirectories": ["messages", "tasks", "input", "images"],
   "settingsJsonEnv": {
     "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1",
     "CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD": "1",
