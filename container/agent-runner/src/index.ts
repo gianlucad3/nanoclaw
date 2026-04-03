@@ -36,6 +36,7 @@ interface ContainerOutput {
   result: string | null;
   newSessionId?: string;
   error?: string;
+  images?: string[];
 }
 
 interface SessionEntry {
@@ -309,19 +310,29 @@ function drainIpcInput(): string[] {
  */
 function drainIpcImages(): string[] {
   try {
-    if (!fs.existsSync(IPC_IMAGES_DIR)) return [];
+    if (!fs.existsSync(IPC_IMAGES_DIR)) {
+      return [];
+    }
     const files = fs.readdirSync(IPC_IMAGES_DIR)
       .filter(f => f.endsWith('.json'))
       .sort();
+
+    if (files.length > 0) {
+      log(`Found ${files.length} image files in ${IPC_IMAGES_DIR}`);
+    }
 
     const images: string[] = [];
     for (const file of files) {
       const filePath = path.join(IPC_IMAGES_DIR, file);
       try {
-        const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+        const content = fs.readFileSync(filePath, 'utf-8');
+        const data = JSON.parse(content);
         fs.unlinkSync(filePath);
         if (data.type === 'image' && data.base64) {
+          log(`Successfully processed image from ${file} (${data.base64.length} bytes)`);
           images.push(data.base64);
+        } else {
+          log(`Image file ${file} has invalid structure: ${Object.keys(data).join(', ')}`);
         }
       } catch (err) {
         log(`Failed to process image file ${file}: ${err instanceof Error ? err.message : String(err)}`);

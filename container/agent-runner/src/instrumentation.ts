@@ -59,63 +59,86 @@ if (endpoint) {
 
   // Manually wrap query() to create an AGENT span around each invocation.
   // We use the OTel API directly rather than ClaudeAgentSDKInstrumentation because
-  // the OISpan/OITracer layer was silently dropping spans.
+  // the official one was silently dropping spans in this environment.
   const originalQuery = sdkWrapper.query;
   sdkWrapper.query = function tracedQuery(...args: Parameters<typeof _query>) {
     const tracer = trace.getTracer('nanoclaw');
-    // Read the first message from MessageStream's queue (already pushed before query() is called)
+    const iterable = originalQuery(...args);
+
+    // Context for turn-aware tracing
     const stream = (args[0] as { prompt?: unknown }).prompt as
       { queue?: Array<{ message?: { content?: unknown } }> } | undefined;
-    const inputValue = typeof stream?.queue?.[0]?.message?.content === 'string'
-      ? stream.queue[0].message!.content as string
-      : undefined;
+    
+    // Track messages we've already used as inputs to spans
+    let messagesSeen = 0;
 
-    const iterable = originalQuery(...args);
     return {
       [Symbol.asyncIterator]() {
-        const span = tracer.startSpan('ClaudeAgent.query', {
-          attributes: {
-            [SemanticConventions.OPENINFERENCE_SPAN_KIND]: OpenInferenceSpanKind.AGENT,
-            ...(inputValue !== undefined && {
-              [SemanticConventions.INPUT_VALUE]: inputValue,
-              [SemanticConventions.INPUT_MIME_TYPE]: MimeType.TEXT,
-            }),
-          },
-        });
         const inner = iterable[Symbol.asyncIterator]();
+        
+        let currentSpan: Span | null = null;
         let lastOutput: string | undefined;
-        const endSpan = (code: SpanStatusCode, err?: Error) => {
-          if (!activeSpans.has(span)) return; // already ended
-          activeSpans.delete(span);
-          if (err) span.recordException(err);
+
+        const endCurrentSpan = (code: SpanStatusCode = SpanStatusCode.OK, err?: Error) => {
+          if (!currentSpan) return;
+          if (err) currentSpan.recordException(err);
           if (lastOutput !== undefined) {
-            span.setAttribute(SemanticConventions.OUTPUT_VALUE, lastOutput);
-            span.setAttribute(SemanticConventions.OUTPUT_MIME_TYPE, MimeType.TEXT);
+            currentSpan.setAttribute(SemanticConventions.OUTPUT_VALUE, lastOutput);
+            currentSpan.setAttribute(SemanticConventions.OUTPUT_MIME_TYPE, MimeType.TEXT);
           }
-          span.setStatus({ code });
-          span.end();
+          currentSpan.setStatus({ code });
+          currentSpan.end();
+          activeSpans.delete(currentSpan);
+          currentSpan = null;
+          lastOutput = undefined;
         };
-        // Register finalizer — captures lastOutput by reference so SIGTERM gets
-        // whatever was collected at signal time.
-        activeSpans.set(span, () => endSpan(SpanStatusCode.OK));
+
         return {
           async next() {
+            // Start a new span if we don't have one (start of query or after a 'result' message)
+            if (!currentSpan) {
+              // Try to find the input for this turn
+              const inputMessage = stream?.queue?.[messagesSeen];
+              const inputValue = typeof inputMessage?.message?.content === 'string'
+                ? inputMessage.message!.content as string
+                : undefined;
+              
+              if (inputValue !== undefined) {
+                messagesSeen++;
+              }
+
+              currentSpan = tracer.startSpan('ClaudeAgent.query.turn', {
+                attributes: {
+                  [SemanticConventions.OPENINFERENCE_SPAN_KIND]: OpenInferenceSpanKind.AGENT,
+                  ...(inputValue !== undefined && {
+                    [SemanticConventions.INPUT_VALUE]: inputValue,
+                    [SemanticConventions.INPUT_MIME_TYPE]: MimeType.TEXT,
+                  }),
+                },
+              });
+              activeSpans.set(currentSpan, () => endCurrentSpan());
+            }
+
             try {
               const result = await inner.next();
-              // Capture result text as output so it's available when span ends
+              
               if (!result.done && result.value && (result.value as { type?: string }).type === 'result') {
+                // Turn is complete
                 const r = result.value as { result?: string };
                 if (r.result) lastOutput = r.result;
+                endCurrentSpan();
+              } else if (result.done) {
+                endCurrentSpan();
               }
-              if (result.done) endSpan(SpanStatusCode.OK);
+              
               return result;
             } catch (err) {
-              endSpan(SpanStatusCode.ERROR, err instanceof Error ? err : new Error(String(err)));
+              endCurrentSpan(SpanStatusCode.ERROR, err instanceof Error ? err : new Error(String(err)));
               throw err;
             }
           },
           async return(value?: unknown) {
-            endSpan(SpanStatusCode.OK);
+            endCurrentSpan();
             return inner.return ? inner.return() : { done: true as const, value: value as never };
           },
         };
@@ -126,7 +149,7 @@ if (endpoint) {
   console.error(`[instrumentation] Phoenix tracing enabled → ${url}`);
 }
 
-// Export the (possibly patched) query for index.ts to use
+// Export the patching query for index.ts to use
 export const query = sdkWrapper.query;
 
 export async function shutdownTracing(): Promise<void> {
