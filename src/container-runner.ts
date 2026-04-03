@@ -37,8 +37,8 @@ import { validateAdditionalMounts } from './mount-security.js';
 import { RegisteredGroup } from './types.js';
 
 // Sentinel markers for robust output parsing (must match agent-runner)
-const OUTPUT_START_MARKER = '---NANOCLAW_OUTPUT_START---';
-const OUTPUT_END_MARKER = '---NANOCLAW_OUTPUT_END---';
+export const OUTPUT_START_MARKER = '---NANOCLAW_OUTPUT_START---';
+export const OUTPUT_END_MARKER = '---NANOCLAW_OUTPUT_END---';
 
 export interface ContainerInput {
   prompt: string;
@@ -58,13 +58,13 @@ export interface ContainerOutput {
   error?: string;
 }
 
-interface VolumeMount {
+export interface VolumeMount {
   hostPath: string;
   containerPath: string;
   readonly: boolean;
 }
 
-function buildVolumeMounts(
+export function buildVolumeMounts(
   group: RegisteredGroup,
   isMain: boolean,
 ): VolumeMount[] {

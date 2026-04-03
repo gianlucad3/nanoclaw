@@ -135,15 +135,17 @@ Run `scripts/test-mlx.sh --skip-container` to check configuration and host conne
 
 | File | Covers |
 |------|--------|
-| `src/mcp-consistency.test.ts` | Auto-validates every MCP server's env forwarding chain end-to-end: `config.ts` → `container-runner.ts` → `mcpServers.env` in `index.ts` → `scripts/claw`. When you add a new MCP server, add its env vars and this test will catch anything missing. |
+| `src/container-contract.test.ts` | Parity tests between `src/container-runner.ts` (TS) and `scripts/claw` (Python). Ensures both environments produce identical container invocations (mounts, env vars, settings). |
+| `src/mcp-consistency.test.ts` | Auto-validates every MCP server's env forwarding chain end-to-end: `config.ts` → `container-runner.ts` → `mcpServers.env` in `index.ts`. When you add a new MCP server, add its env vars and this test will catch anything missing. |
 | `src/env-forwarding.test.ts` | Runtime unit tests for `buildContainerArgs` — verifies each env var actually appears as a `-e` flag. |
 
 **When adding a new MCP server** (`*-mcp-stdio.ts`):
 1. Add the server's env vars to `readEnvFile` in `src/config.ts` and export them.
 2. Forward them via `-e` flags in `buildContainerArgs` in `src/container-runner.ts`.
 3. Add an `env` field in the `mcpServers` config in `container/agent-runner/src/index.ts`.
-4. Document them in `.env.example` — `scripts/claw` forwards all `.env` keys automatically.
-5. Run `npm test` — `mcp-consistency.test.ts` will tell you exactly what's missing.
+4. Document them in `.env.example`.
+5. Add the new env var to `forwardedEnvVars` in `src/container-contract.json`.
+6. Run `npm test` — `mcp-consistency.test.ts` and `container-contract.test.ts` will tell you exactly what's missing.
 
 For skills, run the skill end-to-end and verify it works.
 

@@ -1,0 +1,37 @@
+{
+  "containerPaths": {
+    "project": "/workspace/project",
+    "group": "/workspace/group",
+    "global": "/workspace/global",
+    "ipc": "/workspace/ipc",
+    "claude": "/home/node/.claude",
+    "agentRunnerSrc": "/app/src"
+  },
+  "ipcSubdirectories": ["messages", "tasks", "input"],
+  "settingsJsonEnv": {
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1",
+    "CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD": "1",
+    "CLAUDE_CODE_DISABLE_AUTO_MEMORY": "0"
+  },
+  "forwardedEnvVars": [
+    "TZ",
+    "OLLAMA_HOST",
+    "MLX_HOST",
+    "MLX_MODEL",
+    "PHOENIX_COLLECTOR_ENDPOINT",
+    "PHOENIX_API_KEY",
+    "PHOENIX_PROJECT_NAME",
+    "OLLAMA_ADMIN_TOOLS",
+    "CLAUDE_CODE_OAUTH_TOKEN",
+    "ANTHROPIC_API_KEY"
+  ],
+  "imageName": "nanoclaw-agent:latest",
+  "outputSentinels": {
+    "start": "---NANOCLAW_OUTPUT_START---",
+    "end": "---NANOCLAW_OUTPUT_END---"
+  },
+  "proxyDefaults": {
+    "host": "192.168.64.1",
+    "port": "3001"
+  }
+}

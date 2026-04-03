@@ -58,6 +58,14 @@ DB_PATH      = NANOCLAW_DIR / "store" / "messages.db"
 ENV_FILE     = NANOCLAW_DIR / ".env"
 IMAGE        = "nanoclaw-agent:latest"
 
+FORWARDED_ENV_KEYS = {
+    "TZ", "OLLAMA_HOST", "MLX_HOST", "MLX_MODEL",
+    "PHOENIX_COLLECTOR_ENDPOINT", "PHOENIX_API_KEY", "PHOENIX_PROJECT_NAME",
+    "OLLAMA_ADMIN_TOOLS",
+    # Auth: forward whichever token type is configured
+    "CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY",
+}
+
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
 def detect_runtime(preference: str | None) -> str:
@@ -167,16 +175,16 @@ def build_mounts(folder: str, is_main: bool) -> list[tuple[str, str, bool]]:
     if is_main:
         # Main: project root read-only (agent has access to nanoclaw codebase)
         mounts.append((str(NANOCLAW_DIR), "/workspace/project", True))
-    else:
-        # Non-main: global memory directory (persona / shared instructions)
-        global_dir = groups_dir / "global"
-        if global_dir.exists():
-            mounts.append((str(global_dir), "/workspace/global", True))
+    
+    # Non-main: global memory directory (persona / shared instructions)
+    # Always mounted if exists (matches TS behavior)
+    if not is_main:
+        mounts.append((str(groups_dir / "global"), "/workspace/global", True))
+
     mounts.append((str(group_dir),   "/workspace/group",    False))
     mounts.append((str(claude_dir),  "/home/node/.claude",  False))
     mounts.append((str(ipc_dir),     "/workspace/ipc",      False))
-    if agent_runner_src.exists():
-        mounts.append((str(agent_runner_src), "/app/src", False))
+    mounts.append((str(agent_runner_src), "/app/src",       False))
     return mounts
 
 
@@ -194,20 +202,12 @@ def run_container(runtime: str, image: str, payload: dict,
     proxy_port = secrets.get("CREDENTIAL_PROXY_PORT") or "3001"
     cmd += ["-e", f"ANTHROPIC_BASE_URL=http://{proxy_host}:{proxy_port}"]
 
-    # Forward only the env vars that container-runner.ts forwards — not the
-    # full .env dump (avoids leaking TELEGRAM_BOT_TOKEN, DOCKER_HOST, etc.
-    # into containers that don't need them and don't match production).
-    _FORWARDED_KEYS = {
-        "TZ", "OLLAMA_HOST", "MLX_HOST", "MLX_MODEL",
-        "PHOENIX_COLLECTOR_ENDPOINT", "PHOENIX_API_KEY", "PHOENIX_PROJECT_NAME",
-        "OLLAMA_ADMIN_TOOLS",
-        # Auth: forward whichever token type is configured
-        "CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY",
-    }
-    for key in _FORWARDED_KEYS:
-        val = secrets.get(key)
-        if val:
-            cmd += ["-e", f"{key}={val}"]
+    # Forward ALL keys from .env generically. 
+    # This ensures that any new MCP server env vars are forwarded automatically
+    # without needing to update this script.
+    for key, val in secrets.items():
+        cmd += ["-e", f"{key}={val}"]
+
     if folder:
         for host, container, readonly in build_mounts(folder, is_main):
             if readonly:
@@ -348,10 +348,69 @@ def main():
                         help="Max seconds to wait for a response (default: 300)")
     parser.add_argument("-v", "--verbose", action="store_true",
                         help="Show debug info: cmd, payload (secrets redacted), stdout lines, exit code")
+
+    # Dry-run flags for parity testing
+    parser.add_argument("--dry-run", action="store_true", help="Print configuration JSON and exit")
+    parser.add_argument("--dry-run-folder", help="Folder to use for dry-run (skips DB)")
+    parser.add_argument("--dry-run-main", action="store_true", help="Treat dry-run folder as main")
+
     args = parser.parse_args()
 
     global VERBOSE
     VERBOSE = args.verbose
+
+    if args.dry_run:
+        # Dry-run mode: emit JSON matching src/container-contract.json structure
+        import tempfile
+        import shutil
+
+        folder = args.dry_run_folder or "test-group"
+        is_main = args.dry_run_main
+
+        # Use a temporary directory to avoid side-effects on the real filesystem
+        with tempfile.TemporaryDirectory() as tmpdir:
+            orig_nanoclaw_dir = globals().get("NANOCLAW_DIR")
+            globals()["NANOCLAW_DIR"] = Path(tmpdir)
+            
+            # Re-initialize paths derived from NANOCLAW_DIR
+            ipc_dir = Path(tmpdir) / "data" / "ipc" / folder
+            
+            mounts_raw = build_mounts(folder, is_main)
+            
+            # Normalize paths for comparison: replace host path with $PROJECT_ROOT/
+            # but keep container paths as-is.
+            mounts = []
+            for host, container, readonly in mounts_raw:
+                mounts.append({
+                    "containerPath": container,
+                    "readonly": readonly
+                })
+
+            # Re-read settings.json from the temp dir
+            claude_dir = Path(tmpdir) / "data" / "sessions" / folder / ".claude"
+            settings_json = json.loads((claude_dir / "settings.json").read_text())
+
+            output = {
+                "mounts": mounts,
+                "envVars": list(FORWARDED_ENV_KEYS),
+                "settingsJson": settings_json,
+                "outputSentinels": {
+                    "start": "---NANOCLAW_OUTPUT_START---",
+                    "end": "---NANOCLAW_OUTPUT_END---"
+                },
+                "imageName": IMAGE,
+                "payloadFields": ["prompt", "chatJid", "isMain", "groupFolder", "assistantName"],
+                "proxyDefaults": {
+                    "host": "192.168.64.1",
+                    "port": "3001"
+                },
+                "ipcSubdirectories": ["messages", "tasks", "input"]
+            }
+            print(json.dumps(output, indent=2))
+            # Restore original (optional, we're exiting)
+            if orig_nanoclaw_dir:
+                globals()["NANOCLAW_DIR"] = orig_nanoclaw_dir
+            sys.exit(0)
 
     groups = get_groups(DB_PATH) if DB_PATH.exists() else []
 
