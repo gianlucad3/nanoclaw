@@ -267,12 +267,18 @@ export async function processGroupMessages(chatJid: string): Promise<boolean> {
   const output = await runAgent(group, prompt, chatJid, async (result) => {
     // Streaming output callback — called for each agent result
     if (result.images && result.images.length > 0) {
-      logger.info({ group: group.name, imageCount: result.images.length }, 'Agent returned images');
+      logger.info(
+        { group: group.name, imageCount: result.images.length },
+        'Agent returned images',
+      );
       for (const base64 of result.images) {
         if (channel.sendImage) {
           await channel.sendImage(chatJid, base64);
         } else {
-          logger.warn({ group: group.name, channel: channel.name }, 'Channel does not support image delivery');
+          logger.warn(
+            { group: group.name, channel: channel.name },
+            'Channel does not support image delivery',
+          );
         }
       }
       resetIdleTimer();
