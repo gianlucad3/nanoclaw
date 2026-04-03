@@ -68,6 +68,15 @@ FORWARDED_ENV_KEYS = {
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
+def escape_xml(s: str) -> str:
+    if not s:
+        return ""
+    return (s.replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+            .replace('"', "&quot;"))
+
+
 def detect_runtime(preference: str | None) -> str:
     if preference:
         dbg(f"runtime: forced to {preference}")
@@ -107,6 +116,21 @@ def get_groups(db: Path) -> list[dict]:
     ).fetchall()
     conn.close()
     return [{"jid": r[0], "name": r[1], "folder": r[2], "is_main": bool(r[3])} for r in rows]
+
+
+def get_history(db: Path, jid: str, limit: int = 20) -> list[dict]:
+    if not db.exists():
+        return []
+    conn = sqlite3.connect(db)
+    # Order by timestamp desc to get the latest, then reverse to get chronological
+    rows = conn.execute("""
+        SELECT sender_name, content, timestamp 
+        FROM messages 
+        WHERE chat_jid = ? 
+        ORDER BY timestamp DESC LIMIT ?
+    """, (jid, limit)).fetchall()
+    conn.close()
+    return [{"sender": r[0], "content": r[1], "timestamp": r[2]} for r in reversed(rows)]
 
 
 def find_group(groups: list[dict], query: str) -> dict | None:
@@ -368,6 +392,7 @@ def main():
     parser.add_argument("--dry-run-folder", help="Folder to use for dry-run (skips DB)")
     parser.add_argument("--dry-run-main", action="store_true", help="Treat dry-run folder as main")
     parser.add_argument("--dry-run-exists", action="store_true", help="Bypass existence checks in build_mounts")
+    parser.add_argument("--no-history", action="store_true", help="Do not include chat history in prompt")
 
     args = parser.parse_args()
 
@@ -492,8 +517,25 @@ def main():
     if not secrets:
         print("warning: no secrets found in .env — agent may not be authenticated", file=sys.stderr)
 
+    # Construct full prompt with history (parity with src/index.ts)
+    full_prompt = prompt
+    if not args.no_history and jid:
+        history = get_history(DB_PATH, jid)
+        if history:
+            tz = secrets.get("TZ", "UTC")
+            # Format history using same tags as src/router.ts
+            lines = []
+            for m in history:
+                # Note: claw doesn't have the full timezone logic, 
+                # so we just use the raw timestamp for now. 
+                # Production uses formatLocalTime.
+                lines.append(f'<message sender="{escape_xml(m["sender"])}" time="{escape_xml(m["timestamp"])}">{escape_xml(m["content"])}</message>')
+            
+            history_xml = f'<context timezone="{escape_xml(tz)}" />\n<messages>\n' + "\n".join(lines) + "\n</messages>"
+            full_prompt = f"{history_xml}\n\n{prompt}"
+
     payload: dict = {
-        "prompt": prompt,
+        "prompt": full_prompt,
         "chatJid": jid,
         "isMain": is_main,
         "secrets": secrets,
