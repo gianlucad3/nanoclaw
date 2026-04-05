@@ -3,21 +3,22 @@ import fs from 'fs';
 import path from 'path';
 import { describe, expect, it, vi } from 'vitest';
 
-import contract from './container-contract.json';
+import contract from './container-contract.json' with { type: 'json' };
 import {
   OUTPUT_END_MARKER,
   OUTPUT_START_MARKER,
   buildContainerArgs,
   buildVolumeMounts,
-} from './container-runner.ts';
-import { CONTAINER_IMAGE } from './config.ts';
-import { RegisteredGroup } from './types.ts';
+  VolumeMount,
+} from './container-runner.js';
+import { CONTAINER_IMAGE } from './config.js';
+import { RegisteredGroup } from './types.js';
 
 const mockGroup: RegisteredGroup = {
-  jid: 'test-jid',
   name: 'Test Group',
   folder: 'test-folder',
-  isMain: false,
+  added_at: new Date().toISOString(),
+  trigger: '@test',
 };
 
 describe('Container Contract Parity', () => {
@@ -130,7 +131,7 @@ describe('Container Contract Parity', () => {
 
       // Sort both by containerPath to compare
       tsPaths.sort((a, b) => a.containerPath.localeCompare(b.containerPath));
-      clawPaths.sort((a, b) => a.containerPath.localeCompare(b.containerPath));
+      clawPaths.sort((a: VolumeMount, b: VolumeMount) => a.containerPath.localeCompare(b.containerPath));
 
       expect(tsPaths).toEqual(clawPaths);
     });
@@ -156,7 +157,7 @@ describe('Container Contract Parity', () => {
       }));
 
       tsPaths.sort((a, b) => a.containerPath.localeCompare(b.containerPath));
-      clawPaths.sort((a, b) => a.containerPath.localeCompare(b.containerPath));
+      clawPaths.sort((a: VolumeMount, b: VolumeMount) => a.containerPath.localeCompare(b.containerPath));
 
       expect(tsPaths).toEqual(clawPaths);
     });

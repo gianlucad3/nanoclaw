@@ -209,9 +209,18 @@ interface CompactionRequest {
 }
 
 /** @internal — exported for testing */
-export function processCompactionRequest(req: CompactionRequest): Promise<void> {
+export function processCompactionRequest(
+  req: CompactionRequest,
+): Promise<void> {
   return Promise.resolve().then(async () => {
-    const { processingPath, memoryRequestsDir, sourceGroup, isMain, jid, deps } = req;
+    const {
+      processingPath,
+      memoryRequestsDir,
+      sourceGroup,
+      isMain,
+      jid,
+      deps,
+    } = req;
 
     if (!jid) {
       logger.warn({ sourceGroup }, 'Cannot compact memory: unregistered group');
