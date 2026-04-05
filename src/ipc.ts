@@ -3,11 +3,12 @@ import path from 'path';
 
 import { CronExpressionParser } from 'cron-parser';
 
-import { DATA_DIR, IPC_POLL_INTERVAL, TIMEZONE } from './config.js';
+import { DATA_DIR, GROUPS_DIR, IPC_POLL_INTERVAL, TIMEZONE } from './config.js';
 import { AvailableGroup } from './container-runner.js';
 import { createTask, deleteTask, getTaskById, updateTask } from './db.js';
 import { isValidGroupFolder } from './group-folder.js';
 import { logger } from './logger.js';
+import { summarizeMemoryFile } from './services/local-summarizer.js';
 import { RegisteredGroup } from './types.js';
 
 export interface IpcDeps {
@@ -23,6 +24,8 @@ export interface IpcDeps {
     registeredJids: Set<string>,
   ) => void;
   onTasksChanged: () => void;
+  lockGroup: (groupJid: string) => void;
+  unlockGroup: (groupJid: string) => void;
 }
 
 let ipcWatcherRunning = false;
@@ -55,14 +58,21 @@ export function startIpcWatcher(deps: IpcDeps): void {
 
     // Build folder→isMain lookup from registered groups
     const folderIsMain = new Map<string, boolean>();
-    for (const group of Object.values(registeredGroups)) {
+    const folderToJid = new Map<string, string>();
+    for (const [jid, group] of Object.entries(registeredGroups)) {
       if (group.isMain) folderIsMain.set(group.folder, true);
+      folderToJid.set(group.folder, jid);
     }
 
     for (const sourceGroup of groupFolders) {
       const isMain = folderIsMain.get(sourceGroup) === true;
       const messagesDir = path.join(ipcBaseDir, sourceGroup, 'messages');
       const tasksDir = path.join(ipcBaseDir, sourceGroup, 'tasks');
+      const memoryRequestsDir = path.join(
+        ipcBaseDir,
+        sourceGroup,
+        'memory_requests',
+      );
 
       // Process messages from this group's IPC directory
       try {
@@ -144,6 +154,124 @@ export function startIpcWatcher(deps: IpcDeps): void {
         }
       } catch (err) {
         logger.error({ err, sourceGroup }, 'Error reading IPC tasks directory');
+      }
+
+      // Process memory compaction requests
+      try {
+        if (fs.existsSync(memoryRequestsDir)) {
+          const reqFiles = fs
+            .readdirSync(memoryRequestsDir)
+            .filter((f) => f.endsWith('_compact.json'));
+          for (const file of reqFiles) {
+            const filePath = path.join(memoryRequestsDir, file);
+            const processingPath = `${filePath}.processing`;
+
+            // Rename immediately to avoid picking up the same file again while async processing happens
+            try {
+              fs.renameSync(filePath, processingPath);
+            } catch {
+              continue; // Likely another IPC loop iteration got it
+            }
+
+            Promise.resolve().then(async () => {
+              const jid = folderToJid.get(sourceGroup);
+              if (!jid) {
+                logger.warn(
+                  { sourceGroup },
+                  'Cannot compact memory: unregistered group',
+                );
+                fs.unlinkSync(processingPath);
+                return;
+              }
+
+              let data;
+              try {
+                data = JSON.parse(fs.readFileSync(processingPath, 'utf-8'));
+              } catch {
+                logger.error(
+                  { file, sourceGroup },
+                  'Invalid JSON in memory compaction request',
+                );
+                fs.unlinkSync(processingPath);
+                return;
+              }
+
+              // Security Check: Ensure group directory structure matches JSON identity
+              if (data.group_id !== sourceGroup) {
+                logger.warn(
+                  { sourceGroup, reqGroupId: data.group_id },
+                  'Mismatched group_id in memory compaction request, possible directory traversal attempt',
+                );
+                fs.unlinkSync(processingPath);
+                return;
+              }
+
+              const groupDir = path.join(
+                GROUPS_DIR,
+                isMain ? 'main' : sourceGroup,
+              );
+              const claudeMdPath = path.join(groupDir, 'CLAUDE.md');
+
+              if (!fs.existsSync(claudeMdPath)) {
+                logger.error(
+                  { sourceGroup },
+                  'CLAUDE.md not found for compaction',
+                );
+                fs.unlinkSync(processingPath);
+                return;
+              }
+
+              try {
+                logger.info({ sourceGroup }, 'Starting memory compaction');
+                // 1. Lock the group to prevent incoming messages from overwriting or losing state
+                deps.lockGroup(jid);
+
+                // 2. Read the file
+                const currentContent = fs.readFileSync(claudeMdPath, 'utf-8');
+
+                // 3. Summarize using Local LLM
+                const summary = await summarizeMemoryFile(currentContent);
+
+                // 4. Atomic File Swap
+                const tmpPath = `${claudeMdPath}.tmp`;
+                fs.writeFileSync(tmpPath, summary, 'utf-8');
+                fs.renameSync(tmpPath, claudeMdPath);
+
+                logger.info(
+                  { sourceGroup },
+                  'Memory compaction completed successfully',
+                );
+
+                fs.unlinkSync(processingPath);
+              } catch (err) {
+                logger.error({ err, sourceGroup }, 'Memory compaction failed');
+                // In case of error (e.g. timeout), write an error payload back so the agent knows
+                try {
+                  fs.writeFileSync(
+                    path.join(
+                      memoryRequestsDir,
+                      `${sourceGroup}_compact_error.json`,
+                    ),
+                    JSON.stringify({
+                      error: err instanceof Error ? err.message : String(err),
+                    }),
+                  );
+                  fs.unlinkSync(processingPath);
+                } catch {
+                  // Ignore
+                }
+              } finally {
+                // 5. Always release the queue lock!
+                deps.unlockGroup(jid);
+              }
+            });
+          }
+        }
+      } catch (err) {
+        logger.error(
+          { err, sourceGroup },
+          'Error reading IPC memory_requests directory',
+        );
       }
     }
 

@@ -726,6 +726,8 @@ async function main(): Promise<void> {
         writeTasksSnapshot(group.folder, group.isMain === true, taskRows);
       }
     },
+    lockGroup: (jid) => queue.lockGroup(jid),
+    unlockGroup: (jid) => queue.unlockGroup(jid),
   });
   queue.setProcessMessagesFn(processGroupMessages);
   recoverPendingMessages();
