@@ -173,97 +173,14 @@ export function startIpcWatcher(deps: IpcDeps): void {
               continue; // Likely another IPC loop iteration got it
             }
 
-            Promise.resolve().then(async () => {
-              const jid = folderToJid.get(sourceGroup);
-              if (!jid) {
-                logger.warn(
-                  { sourceGroup },
-                  'Cannot compact memory: unregistered group',
-                );
-                fs.unlinkSync(processingPath);
-                return;
-              }
-
-              let data;
-              try {
-                data = JSON.parse(fs.readFileSync(processingPath, 'utf-8'));
-              } catch {
-                logger.error(
-                  { file, sourceGroup },
-                  'Invalid JSON in memory compaction request',
-                );
-                fs.unlinkSync(processingPath);
-                return;
-              }
-
-              // Security Check: Ensure group directory structure matches JSON identity
-              if (data.group_id !== sourceGroup) {
-                logger.warn(
-                  { sourceGroup, reqGroupId: data.group_id },
-                  'Mismatched group_id in memory compaction request, possible directory traversal attempt',
-                );
-                fs.unlinkSync(processingPath);
-                return;
-              }
-
-              const groupDir = path.join(
-                GROUPS_DIR,
-                isMain ? 'main' : sourceGroup,
-              );
-              const claudeMdPath = path.join(groupDir, 'CLAUDE.md');
-
-              if (!fs.existsSync(claudeMdPath)) {
-                logger.error(
-                  { sourceGroup },
-                  'CLAUDE.md not found for compaction',
-                );
-                fs.unlinkSync(processingPath);
-                return;
-              }
-
-              try {
-                logger.info({ sourceGroup }, 'Starting memory compaction');
-                // 1. Lock the group to prevent incoming messages from overwriting or losing state
-                deps.lockGroup(jid);
-
-                // 2. Read the file
-                const currentContent = fs.readFileSync(claudeMdPath, 'utf-8');
-
-                // 3. Summarize using Local LLM
-                const summary = await summarizeMemoryFile(currentContent);
-
-                // 4. Atomic File Swap
-                const tmpPath = `${claudeMdPath}.tmp`;
-                fs.writeFileSync(tmpPath, summary, 'utf-8');
-                fs.renameSync(tmpPath, claudeMdPath);
-
-                logger.info(
-                  { sourceGroup },
-                  'Memory compaction completed successfully',
-                );
-
-                fs.unlinkSync(processingPath);
-              } catch (err) {
-                logger.error({ err, sourceGroup }, 'Memory compaction failed');
-                // In case of error (e.g. timeout), write an error payload back so the agent knows
-                try {
-                  fs.writeFileSync(
-                    path.join(
-                      memoryRequestsDir,
-                      `${sourceGroup}_compact_error.json`,
-                    ),
-                    JSON.stringify({
-                      error: err instanceof Error ? err.message : String(err),
-                    }),
-                  );
-                  fs.unlinkSync(processingPath);
-                } catch {
-                  // Ignore
-                }
-              } finally {
-                // 5. Always release the queue lock!
-                deps.unlockGroup(jid);
-              }
+            const jid = folderToJid.get(sourceGroup);
+            processCompactionRequest({
+              processingPath,
+              memoryRequestsDir,
+              sourceGroup,
+              isMain,
+              jid: jid || null,
+              deps,
             });
           }
         }
@@ -280,6 +197,90 @@ export function startIpcWatcher(deps: IpcDeps): void {
 
   processIpcFiles();
   logger.info('IPC watcher started (per-group namespaces)');
+}
+
+interface CompactionRequest {
+  processingPath: string;
+  memoryRequestsDir: string;
+  sourceGroup: string;
+  isMain: boolean;
+  jid: string | null;
+  deps: Pick<IpcDeps, 'lockGroup' | 'unlockGroup'>;
+}
+
+/** @internal — exported for testing */
+export function processCompactionRequest(req: CompactionRequest): Promise<void> {
+  return Promise.resolve().then(async () => {
+    const { processingPath, memoryRequestsDir, sourceGroup, isMain, jid, deps } = req;
+
+    if (!jid) {
+      logger.warn({ sourceGroup }, 'Cannot compact memory: unregistered group');
+      fs.unlinkSync(processingPath);
+      return;
+    }
+
+    let data;
+    try {
+      data = JSON.parse(fs.readFileSync(processingPath, 'utf-8'));
+    } catch {
+      logger.error(
+        { sourceGroup },
+        'Invalid JSON in memory compaction request',
+      );
+      fs.unlinkSync(processingPath);
+      return;
+    }
+
+    // Security Check: Ensure group directory structure matches JSON identity
+    if (data.group_id !== sourceGroup) {
+      logger.warn(
+        { sourceGroup, reqGroupId: data.group_id },
+        'Mismatched group_id in memory compaction request, possible directory traversal attempt',
+      );
+      fs.unlinkSync(processingPath);
+      return;
+    }
+
+    const groupDir = path.join(GROUPS_DIR, isMain ? 'main' : sourceGroup);
+    const claudeMdPath = path.join(groupDir, 'CLAUDE.md');
+
+    if (!fs.existsSync(claudeMdPath)) {
+      logger.error({ sourceGroup }, 'CLAUDE.md not found for compaction');
+      fs.unlinkSync(processingPath);
+      return;
+    }
+
+    try {
+      logger.info({ sourceGroup }, 'Starting memory compaction');
+      deps.lockGroup(jid);
+
+      const currentContent = fs.readFileSync(claudeMdPath, 'utf-8');
+      const summary = await summarizeMemoryFile(currentContent);
+
+      // Atomic file swap
+      const tmpPath = `${claudeMdPath}.tmp`;
+      fs.writeFileSync(tmpPath, summary, 'utf-8');
+      fs.renameSync(tmpPath, claudeMdPath);
+
+      logger.info({ sourceGroup }, 'Memory compaction completed successfully');
+      fs.unlinkSync(processingPath);
+    } catch (err) {
+      logger.error({ err, sourceGroup }, 'Memory compaction failed');
+      try {
+        fs.writeFileSync(
+          path.join(memoryRequestsDir, `${sourceGroup}_compact_error.json`),
+          JSON.stringify({
+            error: err instanceof Error ? err.message : String(err),
+          }),
+        );
+        fs.unlinkSync(processingPath);
+      } catch {
+        // Ignore
+      }
+    } finally {
+      deps.unlockGroup(jid);
+    }
+  });
 }
 
 export async function processTaskIpc(
