@@ -131,7 +131,9 @@ describe('Container Contract Parity', () => {
 
       // Sort both by containerPath to compare
       tsPaths.sort((a, b) => a.containerPath.localeCompare(b.containerPath));
-      clawPaths.sort((a: VolumeMount, b: VolumeMount) => a.containerPath.localeCompare(b.containerPath));
+      clawPaths.sort((a: VolumeMount, b: VolumeMount) =>
+        a.containerPath.localeCompare(b.containerPath),
+      );
 
       expect(tsPaths).toEqual(clawPaths);
     });
@@ -157,7 +159,9 @@ describe('Container Contract Parity', () => {
       }));
 
       tsPaths.sort((a, b) => a.containerPath.localeCompare(b.containerPath));
-      clawPaths.sort((a: VolumeMount, b: VolumeMount) => a.containerPath.localeCompare(b.containerPath));
+      clawPaths.sort((a: VolumeMount, b: VolumeMount) =>
+        a.containerPath.localeCompare(b.containerPath),
+      );
 
       expect(tsPaths).toEqual(clawPaths);
     });
