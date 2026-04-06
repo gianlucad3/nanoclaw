@@ -32,6 +32,7 @@ export class GroupQueue {
   private groups = new Map<string, GroupState>();
   private activeCount = 0;
   private waitingGroups: string[] = [];
+  private lockedGroups = new Set<string>();
   private processMessagesFn: ((groupJid: string) => Promise<boolean>) | null =
     null;
   private shuttingDown = false;
@@ -61,14 +62,36 @@ export class GroupQueue {
     this.processMessagesFn = fn;
   }
 
+  isLocked(groupJid: string): boolean {
+    return this.lockedGroups.has(groupJid);
+  }
+
+  lockGroup(groupJid: string): void {
+    logger.info({ groupJid }, 'Locking group (e.g. for memory compaction)');
+    this.lockedGroups.add(groupJid);
+  }
+
+  unlockGroup(groupJid: string): void {
+    if (this.lockedGroups.has(groupJid)) {
+      logger.info({ groupJid }, 'Unlocking group');
+      this.lockedGroups.delete(groupJid);
+      if (!this.shuttingDown) {
+        this.drainGroup(groupJid);
+      }
+    }
+  }
+
   enqueueMessageCheck(groupJid: string): void {
     if (this.shuttingDown) return;
 
     const state = this.getGroup(groupJid);
 
-    if (state.active) {
+    if (state.active || this.isLocked(groupJid)) {
       state.pendingMessages = true;
-      logger.debug({ groupJid }, 'Container active, message queued');
+      logger.debug(
+        { groupJid, locked: this.isLocked(groupJid) },
+        'Container active or group locked, message queued',
+      );
       return;
     }
 
@@ -104,12 +127,15 @@ export class GroupQueue {
       return;
     }
 
-    if (state.active) {
+    if (state.active || this.isLocked(groupJid)) {
       state.pendingTasks.push({ id: taskId, groupJid, fn });
       if (state.idleWaiting) {
         this.closeStdin(groupJid);
       }
-      logger.debug({ groupJid, taskId }, 'Container active, task queued');
+      logger.debug(
+        { groupJid, taskId, locked: this.isLocked(groupJid) },
+        'Container active or group locked, task queued',
+      );
       return;
     }
 
@@ -336,6 +362,7 @@ export class GroupQueue {
 
   private drainGroup(groupJid: string): void {
     if (this.shuttingDown) return;
+    if (this.isLocked(groupJid)) return;
 
     const state = this.getGroup(groupJid);
 
@@ -372,6 +399,11 @@ export class GroupQueue {
       this.activeCount < MAX_CONCURRENT_CONTAINERS
     ) {
       const nextJid = this.waitingGroups.shift()!;
+      if (this.isLocked(nextJid)) {
+        // Put it back if it's locked, skip evaluating it for now.
+        // It will be processed when unlockGroup triggers drainGroup.
+        continue;
+      }
       const state = this.getGroup(nextJid);
 
       // Prioritize tasks over messages
